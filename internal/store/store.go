@@ -64,13 +64,18 @@ type Book struct {
 
 type BookDetails struct {
 	Book
-	SeriesID   int64       `json:"seriesId,omitempty"`
-	AuthorList []AuthorRef `json:"authorList"`
-	GenreList  []GenreRef  `json:"genreList"`
-	Genres     []string    `json:"genres"` // legacy: genre codes
-	Annotation string      `json:"annotation,omitempty"`
-	File       string      `json:"file"`
-	Folder     string      `json:"folder"`
+	SeriesID    int64       `json:"seriesId,omitempty"`
+	AuthorList  []AuthorRef `json:"authorList"`
+	GenreList   []GenreRef  `json:"genreList"`
+	Genres      []string    `json:"genres"` // legacy: genre codes
+	Annotation  string      `json:"annotation,omitempty"`
+	Translators []string    `json:"translators,omitempty"`
+	Publisher   string      `json:"publisher,omitempty"`
+	City        string      `json:"city,omitempty"`
+	PubYear     string      `json:"pubYear,omitempty"`
+	ISBN        string      `json:"isbn,omitempty"`
+	File        string      `json:"file"`
+	Folder      string      `json:"folder"`
 }
 
 type BookFile struct {

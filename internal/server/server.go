@@ -196,8 +196,13 @@ func (s *Server) handleBook(w http.ResponseWriter, r *http.Request) {
 			Name: genres.Name(code),
 		})
 	}
-	if ann, err := s.annotation(id); err == nil {
-		d.Annotation = ann
+	if meta, err := s.bookMeta(id); err == nil && meta != nil {
+		d.Annotation = meta.Annotation
+		d.Translators = meta.Translators
+		d.Publisher = meta.Publisher
+		d.City = meta.City
+		d.PubYear = meta.Year
+		d.ISBN = meta.ISBN
 	}
 	writeJSON(w, d)
 }
@@ -325,27 +330,32 @@ func (s *Server) extractCover(id int64) (*fb2.Cover, error) {
 	return fb2.ExtractCover(bytes.NewReader(data))
 }
 
-func (s *Server) annotation(id int64) (string, error) {
-	cachePath := filepath.Join(s.coverDir, strconv.FormatInt(id, 10)+".ann.html")
+func (s *Server) bookMeta(id int64) (*fb2.Meta, error) {
+	cachePath := filepath.Join(s.coverDir, strconv.FormatInt(id, 10)+".meta.json")
 	if data, err := os.ReadFile(cachePath); err == nil {
-		return string(data), nil
+		var meta fb2.Meta
+		if json.Unmarshal(data, &meta) == nil {
+			return &meta, nil
+		}
 	}
 	bf, err := s.store.BookFile(id)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	raw, err := archive.OpenBook(s.libDir, bf.Folder, bf.File, bf.Ext)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	ann, err := fb2.ExtractAnnotation(bytes.NewReader(raw))
+	meta, err := fb2.ExtractMeta(bytes.NewReader(raw))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	s.coverMu.Lock()
-	_ = os.WriteFile(cachePath, []byte(ann), 0o644)
-	s.coverMu.Unlock()
-	return ann, nil
+	if data, err := json.Marshal(meta); err == nil {
+		s.coverMu.Lock()
+		_ = os.WriteFile(cachePath, data, 0o644)
+		s.coverMu.Unlock()
+	}
+	return meta, nil
 }
 
 func parseID(s string) (int64, error) {

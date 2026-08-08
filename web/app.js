@@ -244,8 +244,32 @@ async function openBook(id) {
     seriesEl.textContent = b.seriesNum ? `${b.series} — ${b.seriesNum}` : b.series;
   }
 
+  const translatorsEl = $("book-translators");
+  if (b.translators && b.translators.length) {
+    translatorsEl.textContent = "Перевод: " + b.translators.join(", ");
+    translatorsEl.classList.remove("hidden");
+  } else {
+    translatorsEl.textContent = "";
+    translatorsEl.classList.add("hidden");
+  }
+
+  const editionEl = $("book-edition");
+  const editionBits = [];
+  if (b.publisher) editionBits.push(b.publisher);
+  if (b.city) editionBits.push(b.city);
+  if (b.pubYear) editionBits.push(b.pubYear);
+  else if (b.year && (b.publisher || b.city)) editionBits.push(String(b.year));
+  if (b.isbn) editionBits.push("ISBN " + b.isbn);
+  if (editionBits.length) {
+    editionEl.textContent = editionBits.join(", ");
+    editionEl.classList.remove("hidden");
+  } else {
+    editionEl.textContent = "";
+    editionEl.classList.add("hidden");
+  }
+
   const bits = [];
-  if (b.year) bits.push(String(b.year));
+  if (b.year && !b.pubYear && !b.publisher && !b.city) bits.push(String(b.year));
   if (b.ext) bits.push(b.ext.toUpperCase());
   if (b.size) bits.push(formatSize(b.size));
   $("book-info").textContent = bits.join(" · ");
