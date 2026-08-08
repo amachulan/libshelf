@@ -748,17 +748,20 @@ body.reader-pages .reader-bar {
 body.reader-pages .reader-stage {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   display: grid;
-  grid-template-columns: 2.5rem 1fr 2.5rem;
+  grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
   align-items: stretch;
+  overflow: hidden;
 }
 
 body.reader-pages .reader-page-nav {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 2;
   border: 0;
-  background: transparent;
+  background: var(--bg);
   color: var(--muted);
   font-size: 1.75rem;
   line-height: 1;
@@ -769,16 +772,18 @@ body.reader-pages .reader-page-nav {
 
 body.reader-pages .reader-page-nav:hover {
   color: var(--ink);
-  background: color-mix(in srgb, var(--line) 28%, transparent);
+  background: color-mix(in srgb, var(--line) 28%, var(--bg));
 }
 
 body.reader-pages .reader-content {
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  max-width: none;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
-  padding: 1.15rem 0.75rem 1.5rem;
+  /* No horizontal padding: otherwise the next CSS column peeks on the right. */
+  padding: 1.15rem 0 1.5rem;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;

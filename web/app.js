@@ -390,19 +390,16 @@ function syncPageMetrics() {
     el.style.columnWidth = "";
     return;
   }
-  const style = getComputedStyle(el);
-  const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
-  const col = Math.max(120, el.clientWidth - pad);
+  // Column width must match the visible client width exactly, or the next
+  // page leaks as a thin strip of letters on the right.
+  const col = Math.max(120, el.clientWidth);
   el.style.columnWidth = col + "px";
 }
 
 function pageStride() {
   const el = readerContentEl();
   if (!el) return 1;
-  const style = getComputedStyle(el);
-  const col = parseFloat(el.style.columnWidth) || el.clientWidth;
-  const gap = parseFloat(style.columnGap) || 0;
-  return Math.max(1, col + gap);
+  return Math.max(1, parseFloat(el.style.columnWidth) || el.clientWidth);
 }
 
 function applyReadMode() {
