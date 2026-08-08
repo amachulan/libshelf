@@ -91,6 +91,7 @@ function formatSize(bytes) {
 
 function show(panel) {
   const reading = panel === "reader";
+  document.documentElement.classList.remove("boot-reader");
   document.body.classList.toggle("reading-mode", reading);
   readerEl.classList.toggle("hidden", !reading);
   $("site-header").classList.toggle("hidden", reading);
@@ -509,16 +510,25 @@ function scheduleSaveProgress() {
 }
 
 async function openReader(id) {
+  currentBookId = id;
+  show("reader");
+  applyReadMode();
+  history.pushState({ read: id }, "", "/?read=" + id);
+
   const res = await api("/api/book/" + id + "/read");
   if (!res.ok) {
     alert("Не удалось открыть книгу");
+    document.documentElement.classList.remove("boot-reader");
+    if (currentBookId) {
+      openBook(currentBookId);
+    } else {
+      show("home");
+    }
     return;
   }
   const data = await res.json();
   readerBookId = id;
-  currentBookId = id;
   restorePosition = data.position || 0;
-  history.pushState({ read: id }, "", "/?read=" + id);
   $("reader-title").textContent = data.title || "";
   $("reader-content").innerHTML = data.html || "";
   applyFontScale({ keepPosition: false });
@@ -547,7 +557,6 @@ async function openReader(id) {
   }
   $("reader-toc-btn").classList.toggle("hidden", chapters.length === 0);
 
-  show("reader");
   applyReadMode();
   requestAnimationFrame(() => {
     requestAnimationFrame(() => restoreReaderPosition(restorePosition));
@@ -1095,10 +1104,13 @@ $("user-form").addEventListener("submit", async (e) => {
 });
 
 (async function boot() {
-  if (!(await loadSession())) return;
-  await loadStats();
-  applyFontScale();
   const params = new URLSearchParams(location.search);
+  const readId = params.get("read");
+  // Switch to reader chrome before network calls so refresh never flashes home.
+  if (readId) show("reader");
+  if (!(await loadSession())) return;
+  if (!readId) await loadStats();
+  applyFontScale();
   if (params.get("users") === "1" && currentUser?.role === "admin") {
     await loadUsers();
     return;

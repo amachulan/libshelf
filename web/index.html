@@ -13,6 +13,10 @@
         t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
       }
       document.documentElement.setAttribute("data-theme", t);
+      // Avoid flashing the home screen while restoring /?read=…
+      if (/(?:^|[?&])read=/.test(location.search)) {
+        document.documentElement.classList.add("boot-reader");
+      }
     })();
   </script>
   <link rel="stylesheet" href="/style.css">

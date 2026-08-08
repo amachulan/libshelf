@@ -326,6 +326,18 @@ main {
 .panel { animation: fade 0.25s ease; }
 .hidden { display: none !important; }
 
+/* First paint for /?read= — hide catalog before app.js boots. */
+html.boot-reader #site-header,
+html.boot-reader #site-main {
+  display: none !important;
+}
+html.boot-reader #reader {
+  display: block !important;
+}
+html.boot-reader body {
+  background: var(--bg);
+}
+
 .lead { color: var(--muted); max-width: 40rem; line-height: 1.5; }
 
 .grid {
