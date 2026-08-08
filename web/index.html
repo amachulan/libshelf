@@ -115,16 +115,17 @@
     <section id="users" class="panel hidden">
       <button type="button" id="users-back" class="linkish">← Назад</button>
       <h2>Пользователи</h2>
-      <form id="user-form" class="user-form">
-        <input id="new-username" class="field" placeholder="Логин" required>
-        <input id="new-password" class="field" type="password" placeholder="Пароль" required>
-        <select id="new-role" class="field">
+      <form id="user-form" class="user-form" autocomplete="off">
+        <input id="new-username" class="field" name="libshelf_new_user" placeholder="Логин" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <input id="new-password" class="field" name="libshelf_new_pass" type="password" placeholder="Пароль" autocomplete="new-password" required>
+        <select id="new-role" class="field" autocomplete="off">
           <option value="reader">Читатель</option>
           <option value="admin">Админ</option>
         </select>
-        <button type="submit" class="btn">Добавить</button>
+        <button type="submit" class="btn" id="user-add-btn">Добавить</button>
       </form>
       <p id="users-error" class="error hidden"></p>
+      <p id="users-ok" class="ok-msg hidden"></p>
       <table class="users-table">
         <thead>
           <tr><th>Логин</th><th>Роль</th><th></th></tr>

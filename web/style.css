@@ -672,6 +672,15 @@ body.reading-mode {
   padding: 0.55rem 0.75rem;
   font-size: 0.9rem;
 }
+.ok-msg {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: var(--control-radius);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 1rem;
+}
 .user-form {
   display: flex;
   flex-wrap: wrap;

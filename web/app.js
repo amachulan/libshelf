@@ -841,24 +841,41 @@ $("users-back").addEventListener("click", () => {
 $("user-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const err = $("users-error");
+  const ok = $("users-ok");
+  const btn = $("user-add-btn");
   err.classList.add("hidden");
-  const res = await api("/api/users", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      username: $("new-username").value.trim(),
-      password: $("new-password").value,
-      role: $("new-role").value,
-    }),
-  });
-  if (!res.ok) {
-    err.textContent = await res.text();
+  ok.classList.add("hidden");
+  const username = $("new-username").value.trim();
+  const password = $("new-password").value;
+  const role = $("new-role").value;
+  if (!username || !password) {
+    err.textContent = "Укажите логин и пароль";
     err.classList.remove("hidden");
     return;
   }
-  $("new-username").value = "";
-  $("new-password").value = "";
-  loadUsers();
+  btn.disabled = true;
+  try {
+    const res = await api("/api/users", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, role }),
+    });
+    if (!res.ok) {
+      err.textContent = (await res.text()) || "Не удалось создать пользователя";
+      err.classList.remove("hidden");
+      return;
+    }
+    const created = await res.json();
+    $("new-username").value = "";
+    $("new-password").value = "";
+    $("new-role").value = "reader";
+    ok.textContent = `Создан: ${created.username} (${roleLabel(created.role)})`;
+    ok.classList.remove("hidden");
+    await loadUsers();
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 (async function boot() {

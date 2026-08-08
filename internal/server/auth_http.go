@@ -230,7 +230,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 		u, err := s.auth.CreateUser(body.Username, body.Password, body.Role)
 		if err != nil {
 			if errors.Is(err, auth.ErrExists) {
-				http.Error(w, err.Error(), http.StatusConflict)
+				http.Error(w, "пользователь уже существует", http.StatusConflict)
 				return
 			}
 			http.Error(w, err.Error(), http.StatusBadRequest)
