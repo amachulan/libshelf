@@ -1,0 +1,150 @@
+package store
+
+import (
+	"database/sql"
+	"fmt"
+
+	_ "modernc.org/sqlite"
+)
+
+type Store struct {
+	db *sql.DB
+}
+
+func Open(path string) (*Store, error) {
+	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	s := &Store{db: db}
+	if _, err := db.Exec(schemaSQL); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("schema: %w", err)
+	}
+	for _, idx := range schemaIndexes {
+		if _, err := db.Exec(idx); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("index: %w", err)
+		}
+	}
+	return s, nil
+}
+
+func (s *Store) Close() error { return s.db.Close() }
+
+func (s *Store) BookCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT count(*) FROM books WHERE deleted = 0 AND lang = 'ru'`).Scan(&n)
+	return n, err
+}
+
+func (s *Store) TotalBookCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT count(*) FROM books`).Scan(&n)
+	return n, err
+}
+
+type Book struct {
+	ID          int64   `json:"id"`
+	Title       string  `json:"title"`
+	Authors     string  `json:"authors"`
+	Series      string  `json:"series"`
+	SeriesNum   int     `json:"seriesNum"`
+	Year        int     `json:"year"`
+	Ext         string  `json:"ext"`
+	Size        int64   `json:"size"`
+	Lang        string  `json:"lang"`
+	Rate        float64 `json:"rate"`
+	CoverURL    string  `json:"coverUrl"`
+	DownloadURL string  `json:"downloadUrl"`
+}
+
+type BookDetails struct {
+	Book
+	Genres []string `json:"genres"`
+	File   string   `json:"file"`
+	Folder string   `json:"folder"`
+}
+
+type BookFile struct {
+	ID     int64
+	Title  string
+	Folder string
+	File   string
+	Ext    string
+	Size   int64
+}
+
+const bookColumns = `
+ b.id,
+ b.title,
+ coalesce((SELECT group_concat(trim(a.last_name || ' ' || a.first_name), ', ')
+           FROM book_authors ba JOIN authors a ON a.id = ba.author_id
+           WHERE ba.book_id = b.id), ''),
+ coalesce(s.title, ''),
+ coalesce(b.series_num, 0),
+ coalesce(b.year, 0),
+ b.ext,
+ b.size,
+ b.lang,
+ b.lib_rate`
+
+func (s *Store) scanBook(sc interface{ Scan(dest ...any) error }) (Book, error) {
+	var b Book
+	err := sc.Scan(&b.ID, &b.Title, &b.Authors, &b.Series, &b.SeriesNum,
+		&b.Year, &b.Ext, &b.Size, &b.Lang, &b.Rate)
+	return b, err
+}
+
+func (s *Store) GetBook(id int64) (*BookDetails, error) {
+	row := s.db.QueryRow(`
+SELECT`+bookColumns+`, b.file, f.name
+FROM books b
+LEFT JOIN series s ON s.id = b.series_id
+JOIN folders f ON f.id = b.folder_id
+WHERE b.id = ? AND b.deleted = 0 AND b.lang = 'ru'`, id)
+
+	var d BookDetails
+	err := row.Scan(&d.ID, &d.Title, &d.Authors, &d.Series, &d.SeriesNum,
+		&d.Year, &d.Ext, &d.Size, &d.Lang, &d.Rate, &d.File, &d.Folder)
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query(`
+SELECT g.code FROM book_genres bg
+JOIN genres g ON g.id = bg.genre_id
+WHERE bg.book_id = ?`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		d.Genres = append(d.Genres, code)
+	}
+	return &d, rows.Err()
+}
+
+func (s *Store) BookFile(id int64) (*BookFile, error) {
+	f := &BookFile{}
+	err := s.db.QueryRow(`
+SELECT b.id, b.title, fo.name, b.file, b.ext, b.size
+FROM books b JOIN folders fo ON fo.id = b.folder_id
+WHERE b.id = ? AND b.deleted = 0 AND b.lang = 'ru'`, id).
+		Scan(&f.ID, &f.Title, &f.Folder, &f.File, &f.Ext, &f.Size)
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	return f, err
+}
+
+var ErrNotFound = fmt.Errorf("not found")

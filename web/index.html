@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Полка</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">Полка</a>
+    <form id="search-form" class="search" action="/" method="get">
+      <input id="q" name="q" type="search" placeholder="Автор и название, например: кинг сияние" autocomplete="off" autofocus>
+      <button type="submit">Найти</button>
+    </form>
+    <div id="stats" class="stats"></div>
+  </header>
+
+  <main>
+    <section id="home" class="panel">
+      <h1>Личная библиотека</h1>
+      <p class="lead">Поиск сразу по автору, названию и серии. По умолчанию только книги на русском.</p>
+    </section>
+
+    <section id="results" class="panel hidden">
+      <h2 id="results-title">Результаты</h2>
+      <div id="grid" class="grid"></div>
+      <p id="empty" class="empty hidden">Ничего не нашлось</p>
+    </section>
+
+    <section id="book" class="panel hidden">
+      <button type="button" id="back" class="linkish">← К результатам</button>
+      <div class="book-card">
+        <div class="cover-wrap">
+          <img id="book-cover" alt="" width="220" height="320">
+        </div>
+        <div class="book-meta">
+          <h1 id="book-title"></h1>
+          <p id="book-authors" class="authors"></p>
+          <p id="book-series" class="series"></p>
+          <p id="book-info" class="info"></p>
+          <p id="book-genres" class="genres"></p>
+          <a id="book-download" class="btn" href="#">Скачать FB2</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

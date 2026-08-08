@@ -1,0 +1,12 @@
+/bin/
+/dist/
+/.tools/
+*.exe
+*.db
+*.db-shm
+*.db-wal
+/data/
+/covers/
+.idea/
+.vscode/
+*.test
