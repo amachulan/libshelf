@@ -5,6 +5,7 @@
 - поиск сразу по **автору + названию + серии** (`кинг сияние`)
 - по умолчанию только **`lang = ru`**
 - карточка книги, обложка из FB2, скачивание
+- вход с ролями **читатель** / **админ**
 - один бинарник Go, SQLite + FTS5
 
 ## Быстрый деплой новых версий (тест)
@@ -33,7 +34,31 @@ sudo /opt/libshelf/deploy.sh
 Скрипт скачивает `latest`, подменяет `/opt/libshelf/libshelf`, перезапускает `screen`.  
 Базу и inpx **не трогает**.
 
-Переменные окружения (опционально): `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_ADDR`.
+Переменные окружения (опционально): `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users`|`none`).
+
+## Авторизация
+
+По умолчанию `--auth=users`: без логина каталог недоступен.
+
+При первом запуске, если пользователей ещё нет, создаётся админ:
+- из env `LIBSHELF_ADMIN_USER` / `LIBSHELF_ADMIN_PASS`, или
+- `admin` + случайный пароль (смотрите `screen -r libshelf` / логи)
+
+Роли:
+- **reader** — поиск, карточки, скачивание
+- **admin** — всё то же + управление пользователями в UI
+
+Добавить пользователя вручную:
+
+```sh
+/opt/libshelf/libshelf user add \
+  --data-dir /opt/libshelf/data \
+  --username alice \
+  --password 'secret' \
+  --role reader
+```
+
+Открытый режим (без логина): `--auth=none` или `LIBSHELF_AUTH=none` в deploy.
 
 ## Первая установка
 
@@ -61,7 +86,8 @@ sudo install -m 755 /tmp/libshelf-linux-amd64 /opt/libshelf/libshelf
 screen -dmaS libshelf /opt/libshelf/libshelf serve \
   --addr 127.0.0.1:12380 \
   --library-dir "/mnt/share/Книги/fb2.Flibusta.Net" \
-  --data-dir /opt/libshelf/data
+  --data-dir /opt/libshelf/data \
+  --auth users
 ```
 
 Или сразу `sudo /opt/libshelf/deploy.sh` после появления release `latest`.
@@ -70,7 +96,7 @@ screen -dmaS libshelf /opt/libshelf/libshelf serve \
 
 ```sh
 curl -s http://127.0.0.1:12380/health
-curl -s 'http://127.0.0.1:12380/api/search?q=кинг%20сияние'
+# пароль bootstrap смотрите в логе screen при первом старте
 ```
 
 ## Сборка вручную

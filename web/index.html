@@ -13,7 +13,14 @@
       <input id="q" name="q" type="search" placeholder="Автор и название, например: кинг сияние" autocomplete="off" autofocus>
       <button type="submit">Найти</button>
     </form>
-    <div id="stats" class="stats"></div>
+    <div class="top-right">
+      <div id="stats" class="stats"></div>
+      <div id="user-box" class="user-box hidden">
+        <span id="user-label"></span>
+        <button type="button" id="users-btn" class="linkish inline hidden">Пользователи</button>
+        <button type="button" id="logout-btn" class="linkish inline">Выйти</button>
+      </div>
+    </div>
   </header>
 
   <main>
@@ -46,6 +53,27 @@
           <a id="book-download" class="btn" href="#">Скачать FB2</a>
         </div>
       </div>
+    </section>
+
+    <section id="users" class="panel hidden">
+      <button type="button" id="users-back" class="linkish">← Назад</button>
+      <h2>Пользователи</h2>
+      <form id="user-form" class="user-form">
+        <input id="new-username" placeholder="Логин" required>
+        <input id="new-password" type="password" placeholder="Пароль" required>
+        <select id="new-role">
+          <option value="reader">Читатель</option>
+          <option value="admin">Админ</option>
+        </select>
+        <button type="submit">Добавить</button>
+      </form>
+      <p id="users-error" class="error hidden"></p>
+      <table class="users-table">
+        <thead>
+          <tr><th>Логин</th><th>Роль</th><th></th></tr>
+        </thead>
+        <tbody id="users-body"></tbody>
+      </table>
     </section>
   </main>
 

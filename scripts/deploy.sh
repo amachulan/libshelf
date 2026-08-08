@@ -59,10 +59,14 @@ sleep 1
 mv -f "${BIN}.new" "$BIN"
 
 echo "Starting $BIN on $ADDR ..."
+# --auth=users is the default; set LIBSHELF_AUTH=none to disable login.
+AUTH_MODE="${LIBSHELF_AUTH:-users}"
+
 screen -dmaS "$SCREEN_NAME" "$BIN" serve \
   --addr "$ADDR" \
   --library-dir "$LIB_DIR" \
-  --data-dir "$DATA_DIR"
+  --data-dir "$DATA_DIR" \
+  --auth "$AUTH_MODE"
 
 sleep 1
 if curl -fsS "http://${ADDR}/health" >/dev/null; then

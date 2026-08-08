@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"libshelf/internal/archive"
+	"libshelf/internal/auth"
 	"libshelf/internal/fb2"
 	"libshelf/internal/genres"
 	"libshelf/internal/store"
@@ -22,19 +23,31 @@ import (
 )
 
 type Server struct {
-	store    *store.Store
-	libDir   string
-	coverDir string
-	mux      *http.ServeMux
-	coverMu  sync.Mutex
+	store        *store.Store
+	auth         *auth.Auth
+	authRequired bool
+	libDir       string
+	coverDir     string
+	mux          *http.ServeMux
+	coverMu      sync.Mutex
 }
 
-func New(st *store.Store, libDir, coverDir string) *Server {
+type Options struct {
+	Store        *store.Store
+	Auth         *auth.Auth
+	AuthRequired bool
+	LibDir       string
+	CoverDir     string
+}
+
+func New(opts Options) *Server {
 	s := &Server{
-		store:    st,
-		libDir:   libDir,
-		coverDir: coverDir,
-		mux:      http.NewServeMux(),
+		store:        opts.Store,
+		auth:         opts.Auth,
+		authRequired: opts.AuthRequired,
+		libDir:       opts.LibDir,
+		coverDir:     opts.CoverDir,
+		mux:          http.NewServeMux(),
 	}
 	s.routes()
 	return s
@@ -43,13 +56,18 @@ func New(st *store.Store, libDir, coverDir string) *Server {
 func (s *Server) ListenAndServe(addr string) error {
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s.mux,
+		Handler:           s.authMiddleware(s.mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return srv.ListenAndServe()
 }
 
 func (s *Server) routes() {
+	s.mux.HandleFunc("/api/login", s.handleLogin)
+	s.mux.HandleFunc("/api/logout", s.handleLogout)
+	s.mux.HandleFunc("/api/me", s.handleMe)
+	s.mux.HandleFunc("/api/users", s.handleUsers)
+	s.mux.HandleFunc("/api/users/", s.handleUsers)
 	s.mux.HandleFunc("/api/search", s.handleSearch)
 	s.mux.HandleFunc("/api/book/", s.handleBook)
 	s.mux.HandleFunc("/api/author/", s.handleAuthor)

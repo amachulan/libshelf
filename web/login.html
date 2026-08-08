@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход — Моя полка</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <h1>Моя полка</h1>
+    <p class="lead">Войдите, чтобы открыть библиотеку</p>
+    <form id="login-form">
+      <label>
+        Логин
+        <input id="username" name="username" autocomplete="username" required autofocus>
+      </label>
+      <label>
+        Пароль
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="error" class="error hidden"></p>
+      <button type="submit">Войти</button>
+    </form>
+  </main>
+  <script src="/login.js"></script>
+</body>
+</html>

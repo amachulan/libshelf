@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 const home = $("home");
 const results = $("results");
 const bookPanel = $("book");
+const usersPanel = $("users");
 const grid = $("grid");
 const empty = $("empty");
 const form = $("search-form");
@@ -13,10 +14,41 @@ const resultsSub = $("results-sub");
 let lastQuery = "";
 let lastBooks = [];
 let listContext = null; // { kind: 'author'|'series', id, name }
+let currentUser = null;
+
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    location.href = "/login.html";
+    throw new Error("unauthorized");
+  }
+  return res;
+}
+
+async function loadSession() {
+  const res = await fetch("/api/me");
+  if (res.status === 401) {
+    location.href = "/login.html";
+    return false;
+  }
+  if (!res.ok) return true;
+  const data = await res.json();
+  if (data.auth && data.user) {
+    currentUser = data.user;
+    $("user-box").classList.remove("hidden");
+    $("user-label").textContent = `${data.user.username} · ${roleLabel(data.user.role)}`;
+    $("users-btn").classList.toggle("hidden", data.user.role !== "admin");
+  }
+  return true;
+}
+
+function roleLabel(role) {
+  return role === "admin" ? "админ" : "читатель";
+}
 
 async function loadStats() {
   try {
-    const res = await fetch("/api/stats");
+    const res = await api("/api/stats");
     const data = await res.json();
     $("stats").textContent = `${formatNum(data.books)} книг (ru)`;
   } catch {
@@ -39,6 +71,7 @@ function show(panel) {
   home.classList.toggle("hidden", panel !== "home");
   results.classList.toggle("hidden", panel !== "results");
   bookPanel.classList.toggle("hidden", panel !== "book");
+  usersPanel.classList.toggle("hidden", panel !== "users");
 }
 
 function coverSrc(url, id) {
@@ -126,7 +159,7 @@ async function doSearch(query) {
     return;
   }
   history.replaceState(null, "", "/?q=" + encodeURIComponent(query));
-  const res = await fetch("/api/search?q=" + encodeURIComponent(query) + "&limit=60");
+  const res = await api("/api/search?q=" + encodeURIComponent(query) + "&limit=60");
   if (!res.ok) {
     alert("Ошибка поиска: " + (await res.text()));
     return;
@@ -136,7 +169,7 @@ async function doSearch(query) {
 }
 
 async function openAuthor(id) {
-  const res = await fetch("/api/author/" + id + "?limit=100");
+  const res = await api("/api/author/" + id + "?limit=100");
   if (!res.ok) {
     alert("Автор недоступен");
     return;
@@ -147,7 +180,7 @@ async function openAuthor(id) {
 }
 
 async function openSeries(id) {
-  const res = await fetch("/api/series/" + id + "?limit=100");
+  const res = await api("/api/series/" + id + "?limit=100");
   if (!res.ok) {
     alert("Серия недоступна");
     return;
@@ -167,7 +200,7 @@ function linkButton(text, onClick) {
 }
 
 async function openBook(id) {
-  const res = await fetch("/api/book/" + id);
+  const res = await api("/api/book/" + id);
   if (!res.ok) {
     alert("Книга недоступна");
     return;
@@ -306,5 +339,86 @@ async function bootFromURL() {
   show("home");
 }
 
-loadStats();
-bootFromURL();
+async function loadUsers() {
+  const res = await api("/api/users");
+  if (!res.ok) {
+    alert("Нет доступа");
+    return;
+  }
+  const data = await res.json();
+  const body = $("users-body");
+  body.innerHTML = "";
+  for (const u of data.users || []) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td></td><td></td><td class="actions"></td>`;
+    tr.children[0].textContent = u.username;
+    tr.children[1].textContent = roleLabel(u.role);
+    if (!currentUser || u.id !== currentUser.id) {
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "linkish inline";
+      del.textContent = "Удалить";
+      del.addEventListener("click", async () => {
+        if (!confirm(`Удалить ${u.username}?`)) return;
+        const r = await api("/api/users/" + u.id, { method: "DELETE" });
+        if (!r.ok) {
+          alert(await r.text());
+          return;
+        }
+        loadUsers();
+      });
+      tr.children[2].appendChild(del);
+    }
+    body.appendChild(tr);
+  }
+  show("users");
+}
+
+$("logout-btn").addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" });
+  location.href = "/login.html";
+});
+
+$("users-btn").addEventListener("click", () => {
+  history.pushState({ users: true }, "", "/?users=1");
+  loadUsers();
+});
+
+$("users-back").addEventListener("click", () => {
+  history.replaceState(null, "", "/");
+  show("home");
+});
+
+$("user-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = $("users-error");
+  err.classList.add("hidden");
+  const res = await api("/api/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: $("new-username").value.trim(),
+      password: $("new-password").value,
+      role: $("new-role").value,
+    }),
+  });
+  if (!res.ok) {
+    err.textContent = await res.text();
+    err.classList.remove("hidden");
+    return;
+  }
+  $("new-username").value = "";
+  $("new-password").value = "";
+  loadUsers();
+});
+
+(async function boot() {
+  if (!(await loadSession())) return;
+  await loadStats();
+  const params = new URLSearchParams(location.search);
+  if (params.get("users") === "1" && currentUser?.role === "admin") {
+    await loadUsers();
+    return;
+  }
+  await bootFromURL();
+})();

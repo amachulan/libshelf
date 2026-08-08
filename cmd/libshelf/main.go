@@ -6,7 +6,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"libshelf/internal/auth"
 	"libshelf/internal/server"
 	"libshelf/internal/store"
 )
@@ -22,6 +24,8 @@ func main() {
 		runImport(os.Args[2:])
 	case "serve":
 		runServe(os.Args[2:])
+	case "user":
+		runUser(os.Args[2:])
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -36,7 +40,8 @@ func usage() {
 
 Usage:
   libshelf import --inpx FILE --library-dir DIR --data-dir DIR [--replace]
-  libshelf serve  --library-dir DIR --data-dir DIR [--addr HOST:PORT]
+  libshelf serve  --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none]
+  libshelf user add --data-dir DIR --username NAME --password PASS [--role admin|reader]
 
 `)
 }
@@ -74,11 +79,17 @@ func runServe(args []string) {
 	libDir := fs.String("library-dir", "", "directory with book archives")
 	dataDir := fs.String("data-dir", "", "directory for SQLite database and cover cache")
 	addr := fs.String("addr", "127.0.0.1:12380", "listen address")
+	authMode := fs.String("auth", "users", "auth mode: users (login required) or none")
 	_ = fs.Parse(args)
 	if *libDir == "" || *dataDir == "" {
 		fs.Usage()
 		os.Exit(2)
 	}
+	mode := strings.ToLower(strings.TrimSpace(*authMode))
+	if mode != "users" && mode != "none" {
+		log.Fatal("--auth must be users or none")
+	}
+
 	dbPath := filepath.Join(*dataDir, "libshelf.db")
 	st, err := store.Open(dbPath)
 	if err != nil {
@@ -96,9 +107,65 @@ func runServe(args []string) {
 	if err := os.MkdirAll(coverDir, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	srv := server.New(st, *libDir, coverDir)
-	log.Printf("listening on http://%s (%d books)", *addr, n)
+
+	var auther *auth.Auth
+	authRequired := mode == "users"
+	if authRequired {
+		auther, err = auth.Open(filepath.Join(*dataDir, "users.db"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer auther.Close()
+		user, pass := auth.EnvBootstrap()
+		u, generated, err := auther.BootstrapAdmin(user, pass)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if u != nil {
+			if generated != "" {
+				log.Printf("created bootstrap admin %q password=%s (change it after login)", u.Username, generated)
+			} else {
+				log.Printf("created bootstrap admin %q from env", u.Username)
+			}
+		}
+	}
+
+	srv := server.New(server.Options{
+		Store:        st,
+		Auth:         auther,
+		AuthRequired: authRequired,
+		LibDir:       *libDir,
+		CoverDir:     coverDir,
+	})
+	log.Printf("listening on http://%s (%d books, auth=%s)", *addr, n, mode)
 	if err := srv.ListenAndServe(*addr); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func runUser(args []string) {
+	if len(args) < 1 || args[0] != "add" {
+		fmt.Fprintf(os.Stderr, "usage: libshelf user add --data-dir DIR --username NAME --password PASS [--role admin|reader]\n")
+		os.Exit(2)
+	}
+	fs := flag.NewFlagSet("user add", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "", "data directory")
+	username := fs.String("username", "", "username")
+	password := fs.String("password", "", "password")
+	role := fs.String("role", auth.RoleReader, "admin or reader")
+	_ = fs.Parse(args[1:])
+	if *dataDir == "" || *username == "" || *password == "" {
+		fs.Usage()
+		os.Exit(2)
+	}
+	a, err := auth.Open(filepath.Join(*dataDir, "users.db"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer a.Close()
+	u, err := a.CreateUser(*username, *password, *role)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("created user %q role=%s id=%d", u.Username, u.Role, u.ID)
 }
