@@ -38,7 +38,7 @@ async function api(url, opts) {
 }
 
 async function loadSession() {
-  const res = await fetch("/api/me");
+  const res = await fetch("/api/me", { credentials: "same-origin" });
   if (res.status === 401) {
     location.href = "/login.html";
     return false;
@@ -46,11 +46,20 @@ async function loadSession() {
   if (!res.ok) return true;
   const data = await res.json();
   if (data.auth && data.user) {
+    const expected = sessionStorage.getItem("libshelf_login_as");
+    if (expected && expected.toLowerCase() !== String(data.user.username || "").toLowerCase()) {
+      sessionStorage.removeItem("libshelf_login_as");
+      await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
+      alert(`Вход не совпал: ожидали «${expected}», сессия «${data.user.username}». Войдите снова.`);
+      location.href = "/login.html";
+      return false;
+    }
+    sessionStorage.removeItem("libshelf_login_as");
     currentUser = data.user;
     $("user-box").classList.remove("hidden");
     $("nav-lists").classList.remove("hidden");
-    $("user-label").textContent = roleLabel(data.user.role);
-    $("user-label").title = data.user.username;
+    $("user-label").textContent = data.user.username;
+    $("user-label").title = roleLabel(data.user.role);
     $("users-btn").classList.toggle("hidden", data.user.role !== "admin");
   }
   return true;

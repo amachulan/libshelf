@@ -148,6 +148,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secure,
+		MaxAge:   int((30 * 24 * time.Hour) / time.Second),
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
 	})
 	writeJSON(w, user)
