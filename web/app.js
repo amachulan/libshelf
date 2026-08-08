@@ -30,6 +30,8 @@ let restorePosition = 0;
 let fontScale = Number(localStorage.getItem("libshelf_font") || "1");
 let readMode = localStorage.getItem("libshelf_read_mode") === "pages" ? "pages" : "scroll";
 let readerPageIndex = 0;
+/** Y offsets (px into #reader-content) where each page starts — snapped to line bottoms. */
+let readerPageOffsets = [0];
 
 async function api(url, opts = {}) {
   const res = await fetch(url, { ...opts, credentials: "same-origin" });
@@ -393,31 +395,137 @@ function readerViewportEl() {
   return document.querySelector(".reader-viewport");
 }
 
-function pageStride() {
+function pageModeActive() {
+  return document.body.classList.contains("reading-mode") && readMode === "pages";
+}
+
+function pageViewportHeight() {
   const vp = readerViewportEl();
-  return Math.max(1, vp ? vp.clientHeight : window.innerHeight);
+  const h = vp ? vp.clientHeight : 0;
+  if (h >= 80) return h;
+  const bar = document.querySelector(".reader-bar");
+  const barH = bar && !document.body.classList.contains("reader-chrome-hidden")
+    ? bar.offsetHeight
+    : 0;
+  return Math.max(80, window.innerHeight - barH);
+}
+
+/** Bottoms of line/box fragments, relative to the content element top. */
+function collectLineBottoms(root) {
+  const rootRect = root.getBoundingClientRect();
+  const bottoms = [];
+  const add = (y) => {
+    if (y > 0.5) bottoms.push(y);
+  };
+
+  root.querySelectorAll("p, h1, h2, h3, h4, li, blockquote, .chapter, .fb2-img, img, pre, hr").forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.height < 1) return;
+    add(r.bottom - rootRect.top);
+  });
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (!/\S/.test(node.nodeValue || "")) continue;
+    const range = document.createRange();
+    try {
+      range.selectNodeContents(node);
+      const rects = range.getClientRects();
+      for (let i = 0; i < rects.length; i++) {
+        const r = rects[i];
+        if (r.height < 1 || r.width < 1) continue;
+        add(r.bottom - rootRect.top);
+      }
+    } catch {
+      /* ignore detached nodes */
+    }
+  }
+
+  bottoms.sort((a, b) => a - b);
+  const out = [];
+  for (const y of bottoms) {
+    if (!out.length || y - out[out.length - 1] > 0.75) out.push(y);
+  }
+  return out;
+}
+
+function rebuildReaderPages() {
+  const content = readerContentEl();
+  if (!content) {
+    readerPageOffsets = [0];
+    return;
+  }
+
+  // Measure without transform/clip so line boxes are stable.
+  content.style.transition = "none";
+  content.style.transform = "none";
+  content.style.clipPath = "none";
+
+  const H = pageViewportHeight();
+  const total = content.scrollHeight;
+  if (H < 80 || total <= H + 1) {
+    readerPageOffsets = [0];
+    return;
+  }
+
+  const bottoms = collectLineBottoms(content);
+  const offsets = [0];
+  let pageTop = 0;
+  const eps = 1;
+
+  while (pageTop + H < total - eps) {
+    const limit = pageTop + H - eps;
+    let best = -1;
+    for (let i = 0; i < bottoms.length; i++) {
+      const b = bottoms[i];
+      if (b <= pageTop + eps) continue;
+      if (b > limit) break;
+      best = b;
+    }
+
+    let nextTop = best > pageTop + eps ? best : pageTop + H;
+    if (nextTop <= pageTop + 1) nextTop = pageTop + H;
+    if (nextTop >= total - 4) break;
+
+    offsets.push(nextTop);
+    pageTop = nextTop;
+    if (offsets.length > 20000) break;
+  }
+
+  readerPageOffsets = offsets;
 }
 
 function maxReaderPageIndex() {
-  const el = readerContentEl();
-  if (!el) return 0;
-  const stride = pageStride();
-  return Math.max(0, Math.ceil(el.scrollHeight / stride) - 1);
+  return Math.max(0, readerPageOffsets.length - 1);
+}
+
+function clearPageTransform(el) {
+  if (!el) return;
+  el.style.transform = "";
+  el.style.clipPath = "";
+  el.style.transition = "";
 }
 
 function applyPageTransform(smooth) {
   const el = readerContentEl();
   if (!el) return;
-  const y = -readerPageIndex * pageStride();
-  el.style.transition = smooth ? "transform 0.2s ease" : "none";
-  el.style.transform = readMode === "pages" ? `translate3d(0, ${y}px, 0)` : "";
+  if (!pageModeActive()) {
+    clearPageTransform(el);
+    return;
+  }
+  const total = el.scrollHeight;
+  const top = readerPageOffsets[readerPageIndex] || 0;
+  const next = readerPageOffsets[readerPageIndex + 1];
+  // Clip to the line-snapped page end so a sliced line is never shown at the bottom.
+  const bottom = next != null ? next : total;
+  el.style.transition = smooth ? "transform 0.22s ease" : "none";
+  el.style.transform = `translate3d(0, ${-top}px, 0)`;
+  el.style.clipPath = `inset(${Math.max(0, top)}px 0 ${Math.max(0, total - bottom)}px 0)`;
 }
 
 function lockPageScroll(on) {
-  const root = document.documentElement;
-  root.classList.toggle("reader-pages-lock", !!on);
-  const touch = window.matchMedia("(hover: none), (pointer: coarse)").matches;
-  root.classList.toggle("reader-pages-touch", !!on && touch);
+  document.documentElement.classList.toggle("reader-pages-lock", !!on);
   if (on) window.scrollTo(0, 0);
 }
 
@@ -436,17 +544,18 @@ function applyReadMode() {
   const el = readerContentEl();
   if (el) {
     el.style.columnWidth = "";
-    if (!paging) {
-      el.style.transform = "";
-      el.style.transition = "";
-    }
+    if (!paging) clearPageTransform(el);
   }
 }
 
 function readerPosition() {
   if (readMode === "pages") {
-    const max = maxReaderPageIndex();
-    return max <= 0 ? 0 : Math.min(1, Math.max(0, readerPageIndex / max));
+    const el = readerContentEl();
+    const total = el ? el.scrollHeight : 0;
+    const maxScroll = Math.max(0, total - pageViewportHeight());
+    if (maxScroll <= 0) return 0;
+    const y = readerPageOffsets[readerPageIndex] || 0;
+    return Math.min(1, Math.max(0, y / maxScroll));
   }
   const el = document.documentElement;
   const max = el.scrollHeight - el.clientHeight;
@@ -457,8 +566,17 @@ function readerPosition() {
 function restoreReaderPosition(pos) {
   const p = Math.min(1, Math.max(0, Number(pos) || 0));
   if (readMode === "pages") {
-    const max = maxReaderPageIndex();
-    readerPageIndex = max <= 0 ? 0 : Math.round(p * max);
+    rebuildReaderPages();
+    const el = readerContentEl();
+    const total = el ? el.scrollHeight : 0;
+    const maxScroll = Math.max(0, total - pageViewportHeight());
+    const targetY = p * maxScroll;
+    let best = 0;
+    for (let i = 0; i < readerPageOffsets.length; i++) {
+      if (readerPageOffsets[i] <= targetY + 1) best = i;
+      else break;
+    }
+    readerPageIndex = best;
     applyPageTransform(false);
     return;
   }
@@ -469,6 +587,7 @@ function restoreReaderPosition(pos) {
 
 function flipReaderPage(dir) {
   if (readMode !== "pages") return;
+  if (readerPageOffsets.length <= 1) rebuildReaderPages();
   const next = Math.min(maxReaderPageIndex(), Math.max(0, readerPageIndex + dir));
   if (next === readerPageIndex) return;
   readerPageIndex = next;
@@ -538,13 +657,10 @@ function closeReader() {
   saveReaderProgress();
   readerBookId = null;
   readerPageIndex = 0;
+  readerPageOffsets = [0];
   document.body.classList.remove("reader-pages", "reader-chrome-hidden");
   lockPageScroll(false);
-  const el = readerContentEl();
-  if (el) {
-    el.style.transform = "";
-    el.style.transition = "";
-  }
+  clearPageTransform(readerContentEl());
   if (currentBookId) {
     openBook(currentBookId);
   } else {
@@ -823,15 +939,23 @@ window.addEventListener("scroll", () => {
   scheduleSaveProgress();
 }, { passive: true });
 
-function pageModeActive() {
-  return document.body.classList.contains("reading-mode") && readMode === "pages";
-}
-
+// Trackpads fire many tiny wheel events — coalesce into one page flip.
+let wheelAcc = 0;
+let wheelLocked = false;
+let wheelResetTimer = 0;
 window.addEventListener("wheel", (e) => {
   if (!pageModeActive()) return;
   e.preventDefault();
-  if (e.deltaY > 4) flipReaderPage(1);
-  else if (e.deltaY < -4) flipReaderPage(-1);
+  if (wheelLocked) return;
+  wheelAcc += e.deltaY;
+  if (wheelResetTimer) clearTimeout(wheelResetTimer);
+  wheelResetTimer = setTimeout(() => { wheelAcc = 0; }, 180);
+  if (Math.abs(wheelAcc) < 48) return;
+  const dir = wheelAcc > 0 ? 1 : -1;
+  wheelAcc = 0;
+  wheelLocked = true;
+  flipReaderPage(dir);
+  setTimeout(() => { wheelLocked = false; }, 220);
 }, { passive: false, capture: true });
 
 let readerTouchStartY = 0;
@@ -844,7 +968,6 @@ function pageTouchMoveBlock(e) {
   if (touchOnReaderChrome(e.target)) return;
   e.preventDefault();
 }
-// Capture on document too — Android/Brave can still pan the page otherwise.
 document.addEventListener("touchmove", pageTouchMoveBlock, { passive: false, capture: true });
 readerEl.addEventListener("touchstart", (e) => {
   if (!pageModeActive()) return;
@@ -859,7 +982,6 @@ readerEl.addEventListener("touchend", (e) => {
   const dx = x - readerTouchStartX;
   const dy = readerTouchStartY - y;
   if (Math.abs(dy) < 28 && Math.abs(dx) < 28) {
-    // Tap text: toggle chrome for a larger reading area.
     const pos = readerPosition();
     document.body.classList.toggle("reader-chrome-hidden");
     requestAnimationFrame(() => restoreReaderPosition(pos));
@@ -885,11 +1007,11 @@ $("reader-font-down").addEventListener("click", () => {
 });
 
 window.addEventListener("keydown", (e) => {
-  if (!document.body.classList.contains("reading-mode") || readMode !== "pages") return;
-  if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+  if (!pageModeActive()) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
     e.preventDefault();
     flipReaderPage(1);
-  } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+  } else if (e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "PageUp") {
     e.preventDefault();
     flipReaderPage(-1);
   }
