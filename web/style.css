@@ -789,7 +789,7 @@ body.reader-pages .reader-page-nav:hover {
   background: color-mix(in srgb, var(--line) 28%, var(--bg));
 }
 
-/* Vertical page flips inside a clipped viewport — no CSS columns (they leak). */
+/* Vertical page flips inside a clipped viewport — no free scroll (breaks paging). */
 body.reader-pages .reader-content {
   box-sizing: border-box;
   width: min(42rem, 100%);
@@ -797,12 +797,9 @@ body.reader-pages .reader-content {
   max-width: 42rem;
   margin: 0;
   padding: 1.15rem 1.25rem 1.5rem;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
   column-width: auto !important;
   column-count: auto !important;
 }
