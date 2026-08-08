@@ -96,6 +96,10 @@ function show(panel) {
   readerEl.classList.toggle("hidden", !reading);
   $("site-header").classList.toggle("hidden", reading);
   $("site-main").classList.toggle("hidden", reading);
+  if (!reading) {
+    document.body.classList.remove("reader-pages", "reader-chrome-hidden");
+    lockPageScroll(false);
+  }
 
   home.classList.toggle("hidden", panel !== "home");
   results.classList.toggle("hidden", panel !== "results");
@@ -410,12 +414,17 @@ function applyPageTransform(smooth) {
 }
 
 function lockPageScroll(on) {
-  document.documentElement.classList.toggle("reader-pages-lock", !!on);
+  const root = document.documentElement;
+  root.classList.toggle("reader-pages-lock", !!on);
+  const touch = window.matchMedia("(hover: none), (pointer: coarse)").matches;
+  root.classList.toggle("reader-pages-touch", !!on && touch);
+  if (on) window.scrollTo(0, 0);
 }
 
 function applyReadMode() {
   const paging = readMode === "pages" && document.body.classList.contains("reading-mode");
-  document.body.classList.toggle("reader-pages", readMode === "pages");
+  // Only while reading — otherwise page-mode CSS leaks onto the catalog.
+  document.body.classList.toggle("reader-pages", paging);
   if (!paging) document.body.classList.remove("reader-chrome-hidden");
   lockPageScroll(paging);
   const btn = $("reader-mode-btn");
@@ -427,7 +436,7 @@ function applyReadMode() {
   const el = readerContentEl();
   if (el) {
     el.style.columnWidth = "";
-    if (readMode !== "pages") {
+    if (!paging) {
       el.style.transform = "";
       el.style.transition = "";
     }
@@ -456,21 +465,6 @@ function restoreReaderPosition(pos) {
   const el = document.documentElement;
   const max = el.scrollHeight - el.clientHeight;
   el.scrollTop = max > 0 ? p * max : 0;
-}
-
-function scrollToReaderTarget(target) {
-  if (!target) return;
-  if (readMode === "pages") {
-    const stride = pageStride();
-    readerPageIndex = Math.min(
-      maxReaderPageIndex(),
-      Math.max(0, Math.floor(target.offsetTop / stride)),
-    );
-    applyPageTransform(true);
-    scheduleSaveProgress();
-    return;
-  }
-  target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function flipReaderPage(dir) {
@@ -534,30 +528,6 @@ async function openReader(id) {
   $("reader-content").innerHTML = data.html || "";
   applyFontScale({ keepPosition: false });
 
-  const toc = $("reader-toc");
-  toc.innerHTML = "";
-  toc.classList.add("hidden");
-  const chapters = data.chapters || [];
-  if (chapters.length) {
-    const ul = document.createElement("ul");
-    for (const ch of chapters) {
-      const li = document.createElement("li");
-      const a = document.createElement("button");
-      a.type = "button";
-      a.className = "toc-link";
-      a.textContent = ch.title;
-      a.addEventListener("click", () => {
-        scrollToReaderTarget(document.getElementById(ch.id));
-        toc.classList.add("hidden");
-        scheduleSaveProgress();
-      });
-      li.appendChild(a);
-      ul.appendChild(li);
-    }
-    toc.appendChild(ul);
-  }
-  $("reader-toc-btn").classList.toggle("hidden", chapters.length === 0);
-
   applyReadMode();
   requestAnimationFrame(() => {
     requestAnimationFrame(() => restoreReaderPosition(restorePosition));
@@ -568,7 +538,6 @@ function closeReader() {
   saveReaderProgress();
   readerBookId = null;
   readerPageIndex = 0;
-  $("reader-toc").classList.add("hidden");
   document.body.classList.remove("reader-pages", "reader-chrome-hidden");
   lockPageScroll(false);
   const el = readerContentEl();
@@ -846,7 +815,11 @@ window.addEventListener("popstate", () => {
 
 window.addEventListener("scroll", () => {
   if (!document.body.classList.contains("reading-mode")) return;
-  if (readMode === "pages") return;
+  if (readMode === "pages") {
+    // Kill any native window scroll that sneaks through on desktop trackpads.
+    if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    return;
+  }
   scheduleSaveProgress();
 }, { passive: true });
 
@@ -854,17 +827,17 @@ function pageModeActive() {
   return document.body.classList.contains("reading-mode") && readMode === "pages";
 }
 
-readerEl.addEventListener("wheel", (e) => {
+window.addEventListener("wheel", (e) => {
   if (!pageModeActive()) return;
   e.preventDefault();
   if (e.deltaY > 4) flipReaderPage(1);
   else if (e.deltaY < -4) flipReaderPage(-1);
-}, { passive: false });
+}, { passive: false, capture: true });
 
 let readerTouchStartY = 0;
 let readerTouchStartX = 0;
 function touchOnReaderChrome(target) {
-  return !!(target && target.closest && target.closest(".reader-bar, .reader-toc, .reader-page-nav"));
+  return !!(target && target.closest && target.closest(".reader-bar, .reader-page-nav"));
 }
 function pageTouchMoveBlock(e) {
   if (!pageModeActive()) return;
@@ -897,9 +870,6 @@ readerEl.addEventListener("touchend", (e) => {
 }, { passive: true, capture: true });
 
 $("reader-back").addEventListener("click", closeReader);
-$("reader-toc-btn").addEventListener("click", () => {
-  $("reader-toc").classList.toggle("hidden");
-});
 $("reader-mode-btn").addEventListener("click", () => {
   setReadMode(readMode === "pages" ? "scroll" : "pages");
 });

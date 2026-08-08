@@ -653,49 +653,6 @@ html.boot-reader body {
   flex-shrink: 0;
 }
 
-.reader-tools .label-full { display: none; }
-@media (min-width: 641px) {
-  .reader-tools .label-short { display: none; }
-  .reader-tools .label-full { display: inline; }
-}
-
-.reader-toc {
-  position: fixed;
-  top: 52px;
-  right: 0.75rem;
-  z-index: 25;
-  width: min(320px, calc(100vw - 1.5rem));
-  max-height: min(70vh, 480px);
-  overflow: auto;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 0.75rem 1rem;
-}
-
-.reader-toc ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.reader-toc li { margin: 0.2rem 0; }
-
-.toc-link {
-  border: 0;
-  background: none;
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.9rem;
-  text-align: left;
-  padding: 0.35rem 0;
-  cursor: pointer;
-  width: 100%;
-}
-
-.toc-link:hover { color: var(--accent); }
-
 .reader-stage {
   position: relative;
 }
@@ -748,17 +705,22 @@ body.reading-mode {
   background: var(--bg);
 }
 
-/* Lock document scroll on mobile — free panning breaks page alignment. */
+/* Lock document scroll in page mode — free panning breaks page alignment. */
 html.reader-pages-lock,
 html.reader-pages-lock body {
   overflow: hidden !important;
   overscroll-behavior: none;
-  touch-action: none;
   height: 100%;
   width: 100%;
 }
 
-html.reader-pages-lock body {
+/* position:fixed only on touch — on desktop it made the window scroll oddly. */
+html.reader-pages-lock.reader-pages-touch,
+html.reader-pages-lock.reader-pages-touch body {
+  touch-action: none;
+}
+
+html.reader-pages-lock.reader-pages-touch body {
   position: fixed;
   inset: 0;
 }
