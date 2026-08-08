@@ -56,17 +56,28 @@ func (s *Server) resolveUser(r *http.Request) *auth.User {
 	if s.auth == nil {
 		return nil
 	}
+	// Cookie session wins for the web UI.
 	if c, err := r.Cookie(auth.CookieName()); err == nil && c.Value != "" {
 		if u, err := s.auth.UserByToken(c.Value); err == nil {
 			return u
 		}
 	}
-	if user, pass, ok := r.BasicAuth(); ok {
-		if u, err := s.auth.Authenticate(user, pass); err == nil {
-			return u
+	// Basic Auth is only for OPDS clients. Browsers often cache realm credentials
+	// after a 401 and would otherwise silently re-login as that user on / and /api/*.
+	if allowBasicAuth(r.URL.Path) {
+		if user, pass, ok := r.BasicAuth(); ok {
+			if u, err := s.auth.Authenticate(user, pass); err == nil {
+				return u
+			}
 		}
 	}
 	return nil
+}
+
+func allowBasicAuth(path string) bool {
+	return strings.HasPrefix(path, "/opds") ||
+		strings.HasPrefix(path, "/download/") ||
+		strings.HasPrefix(path, "/cover/")
 }
 
 func isPublicPath(path string) bool {
@@ -115,6 +126,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
+	}
+	// Drop previous browser session before issuing a new one (user switch).
+	if c, err := r.Cookie(auth.CookieName()); err == nil && c.Value != "" {
+		s.auth.Logout(c.Value)
 	}
 	token, user, err := s.auth.Login(body.Username, body.Password)
 	if err != nil {
