@@ -765,8 +765,8 @@ body.reader-pages .reader-viewport {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  /* Hard clip so the next CSS column never paints outside. */
-  clip-path: inset(0);
+  display: flex;
+  justify-content: center;
 }
 
 body.reader-pages .reader-page-nav {
@@ -789,46 +789,39 @@ body.reader-pages .reader-page-nav:hover {
   background: color-mix(in srgb, var(--line) 28%, var(--bg));
 }
 
+/* Vertical page flips inside a clipped viewport — no CSS columns (they leak). */
 body.reader-pages .reader-content {
   box-sizing: border-box;
-  width: 100%;
+  width: min(42rem, 100%);
   height: 100%;
-  min-width: 0;
-  max-width: 100%;
+  max-width: 42rem;
   margin: 0;
-  padding: 1.15rem 1rem 1.5rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  column-gap: 0;
-  column-fill: auto;
+  padding: 1.15rem 1.25rem 1.5rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  column-width: auto !important;
+  column-count: auto !important;
 }
 
 body.reader-pages .reader-content::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
-  background: transparent;
 }
 
 body.reader-pages .reader-content .fb2-img {
   max-width: 100%;
-  max-height: 55vh;
+  max-height: 50%;
   object-fit: contain;
-  break-inside: avoid;
-}
-
-body.reader-pages .reader-content .chapter,
-body.reader-pages .reader-content h3 {
-  break-after: avoid;
 }
 
 @media (max-width: 640px) {
   body.reader-pages .reader-stage {
-    grid-template-columns: 1.75rem 1fr 1.75rem;
+    grid-template-columns: 1.75rem minmax(0, 1fr) 1.75rem;
   }
   #reader-mode-btn {
     padding: 0 0.55rem;

@@ -383,24 +383,10 @@ function readerContentEl() {
   return $("reader-content");
 }
 
-function syncPageMetrics() {
-  const el = readerContentEl();
-  if (!el) return;
-  if (readMode !== "pages") {
-    el.style.columnWidth = "";
-    return;
-  }
-  const style = getComputedStyle(el);
-  const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
-  // One page = content box width; viewport clips any subpixel leftovers.
-  const col = Math.max(120, Math.floor(el.clientWidth - pad));
-  el.style.columnWidth = col + "px";
-}
-
 function pageStride() {
   const el = readerContentEl();
   if (!el) return 1;
-  return Math.max(1, parseFloat(el.style.columnWidth) || el.clientWidth);
+  return Math.max(1, el.clientHeight);
 }
 
 function applyReadMode() {
@@ -411,16 +397,17 @@ function applyReadMode() {
     btn.title = readMode === "pages" ? "Сплошной текст" : "Листать страницами";
   }
   localStorage.setItem("libshelf_read_mode", readMode);
-  syncPageMetrics();
+  const el = readerContentEl();
+  if (el) el.style.columnWidth = "";
 }
 
 function readerPosition() {
   if (readMode === "pages") {
     const el = readerContentEl();
     if (!el) return 0;
-    const max = el.scrollWidth - el.clientWidth;
+    const max = el.scrollHeight - el.clientHeight;
     if (max <= 0) return 0;
-    return Math.min(1, Math.max(0, el.scrollLeft / max));
+    return Math.min(1, Math.max(0, el.scrollTop / max));
   }
   const el = document.documentElement;
   const max = el.scrollHeight - el.clientHeight;
@@ -433,14 +420,13 @@ function restoreReaderPosition(pos) {
   if (readMode === "pages") {
     const el = readerContentEl();
     if (!el) return;
-    syncPageMetrics();
-    const max = el.scrollWidth - el.clientWidth;
+    const max = el.scrollHeight - el.clientHeight;
     if (max <= 0) {
-      el.scrollLeft = 0;
+      el.scrollTop = 0;
       return;
     }
     const stride = pageStride();
-    el.scrollLeft = Math.round((p * max) / stride) * stride;
+    el.scrollTop = Math.round((p * max) / stride) * stride;
     return;
   }
   const el = document.documentElement;
@@ -452,12 +438,9 @@ function scrollToReaderTarget(target) {
   if (!target) return;
   if (readMode === "pages") {
     const el = readerContentEl();
-    syncPageMetrics();
-    const cRect = el.getBoundingClientRect();
-    const tRect = target.getBoundingClientRect();
-    const delta = tRect.left - cRect.left + el.scrollLeft;
+    const top = target.offsetTop - el.clientHeight * 0.05;
     const stride = pageStride();
-    el.scrollTo({ left: Math.floor(delta / stride) * stride, behavior: "smooth" });
+    el.scrollTo({ top: Math.max(0, Math.floor(top / stride) * stride), behavior: "smooth" });
     return;
   }
   target.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -466,8 +449,7 @@ function scrollToReaderTarget(target) {
 function flipReaderPage(dir) {
   if (readMode !== "pages") return;
   const el = readerContentEl();
-  syncPageMetrics();
-  el.scrollBy({ left: dir * pageStride(), behavior: "smooth" });
+  el.scrollBy({ top: dir * pageStride(), behavior: "smooth" });
   scheduleSaveProgress();
 }
 
@@ -862,10 +844,7 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("resize", () => {
   if (!document.body.classList.contains("reading-mode") || readMode !== "pages" || !readerBookId) return;
   const pos = readerPosition();
-  requestAnimationFrame(() => {
-    syncPageMetrics();
-    restoreReaderPosition(pos);
-  });
+  requestAnimationFrame(() => restoreReaderPosition(pos));
 });
 
 async function bootFromURL() {
