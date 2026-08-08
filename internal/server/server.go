@@ -72,10 +72,14 @@ func staticAssetVersion(fsys fs.FS) string {
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
+func (s *Server) Handler() http.Handler {
+	return s.authMiddleware(s.mux)
+}
+
 func (s *Server) ListenAndServe(addr string) error {
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s.authMiddleware(s.mux),
+		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return srv.ListenAndServe()
@@ -504,6 +508,7 @@ func parseID(s string) (int64, error) {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(v)

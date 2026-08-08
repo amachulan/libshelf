@@ -117,6 +117,7 @@ func (a *Auth) BootstrapAdmin(username, password string) (*User, string, error) 
 
 func (a *Auth) CreateUser(username, password, role string) (*User, error) {
 	username = strings.TrimSpace(username)
+	role = strings.ToLower(strings.TrimSpace(role))
 	if username == "" || password == "" {
 		return nil, fmt.Errorf("username and password required")
 	}

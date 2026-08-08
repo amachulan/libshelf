@@ -28,8 +28,8 @@ let readerSaveTimer = null;
 let restorePosition = 0;
 let fontScale = Number(localStorage.getItem("libshelf_font") || "1");
 
-async function api(url, opts) {
-  const res = await fetch(url, opts);
+async function api(url, opts = {}) {
+  const res = await fetch(url, { ...opts, credentials: "same-origin" });
   if (res.status === 401) {
     location.href = "/login.html";
     throw new Error("unauthorized");
@@ -772,7 +772,7 @@ async function bootFromURL() {
 async function loadUsers() {
   const res = await api("/api/users");
   if (!res.ok) {
-    alert("Нет доступа");
+    alert((await res.text()) || "Нет доступа");
     return;
   }
   const data = await res.json();
@@ -855,14 +855,29 @@ $("user-form").addEventListener("submit", async (e) => {
   }
   btn.disabled = true;
   try {
+    // Confirm the cookie session is still admin before creating.
+    const meRes = await api("/api/me");
+    if (!meRes.ok) {
+      err.textContent = (await meRes.text()) || "Не удалось проверить сессию";
+      err.classList.remove("hidden");
+      return;
+    }
+    const me = await meRes.json();
+    if (!me.auth || !me.user || String(me.user.role).toLowerCase() !== "admin") {
+      err.textContent = me.user
+        ? `Нет прав админа (сейчас ${me.user.username}, роль ${me.user.role}). Выйдите и войдите как admin.`
+        : "Сессия потеряна — войдите как admin снова";
+      err.classList.remove("hidden");
+      return;
+    }
     const res = await api("/api/users", {
       method: "POST",
-      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password, role }),
     });
     if (!res.ok) {
-      err.textContent = (await res.text()) || "Не удалось создать пользователя";
+      const detail = (await res.text()).trim() || res.statusText;
+      err.textContent = `${detail} (HTTP ${res.status}, как ${me.user.username})`;
       err.classList.remove("hidden");
       return;
     }

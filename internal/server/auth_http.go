@@ -103,8 +103,18 @@ func wantsJSON(r *http.Request) bool {
 
 func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) *auth.User {
 	u := userFrom(r.Context())
-	if u == nil || u.Role != auth.RoleAdmin {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	// Fallback: re-resolve from cookie if middleware skipped context (e.g. auth mode edge cases).
+	if u == nil && s.auth != nil {
+		u = s.resolveUser(r)
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	if u == nil {
+		http.Error(w, "нужен вход", http.StatusUnauthorized)
+		return nil
+	}
+	role := strings.TrimSpace(u.Role)
+	if !strings.EqualFold(role, auth.RoleAdmin) {
+		http.Error(w, "нужны права администратора (сейчас "+u.Username+", роль "+role+")", http.StatusForbidden)
 		return nil
 	}
 	return u
