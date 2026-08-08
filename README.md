@@ -7,20 +7,45 @@
 - карточка книги, обложка из FB2, скачивание
 - один бинарник Go, SQLite + FTS5
 
-## Сборка (на сервере Linux)
+## Быстрый деплой новых версий (тест)
+
+Каждый push в `master` собирает linux-бинарник в GitHub Actions:
+- **Artifact** `libshelf-linux-amd64` (вкладка Actions)
+- **Pre-release** [`latest`](https://github.com/amachulan/libshelf/releases/tag/latest) с тем же файлом
+
+На сервере один раз:
 
 ```sh
-git clone <этот-репозиторий> libshelf
-cd libshelf
-go mod tidy
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o libshelf ./cmd/libshelf
-sudo mkdir -p /opt/libshelf/data
-sudo cp libshelf /opt/libshelf/libshelf
+# нужен GitHub CLI, залогиненный с доступом к репо
+gh auth login
+
+sudo mkdir -p /opt/libshelf
+sudo curl -fsSL -o /opt/libshelf/deploy.sh \
+  https://raw.githubusercontent.com/amachulan/libshelf/master/scripts/deploy.sh
+sudo chmod +x /opt/libshelf/deploy.sh
 ```
 
-## Импорт
+Дальше после каждого `git push` в master:
 
-Остановите Polka/Asket, если они слушают `:12380`.
+```sh
+sudo /opt/libshelf/deploy.sh
+```
+
+Скрипт скачивает `latest`, подменяет `/opt/libshelf/libshelf`, перезапускает `screen`.  
+Базу и inpx **не трогает**.
+
+Переменные окружения (опционально): `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_ADDR`.
+
+## Первая установка
+
+```sh
+sudo mkdir -p /opt/libshelf/data
+# либо собрать локально / скачать с release latest:
+gh release download latest -R amachulan/libshelf -p libshelf-linux-amd64 -D /tmp
+sudo install -m 755 /tmp/libshelf-linux-amd64 /opt/libshelf/libshelf
+```
+
+### Импорт (один раз)
 
 ```sh
 /opt/libshelf/libshelf import \
@@ -29,13 +54,9 @@ sudo cp libshelf /opt/libshelf/libshelf
   --data-dir /opt/libshelf/data
 ```
 
-Повторный импорт:
+Повторный импорт каталога: добавить `--replace`.
 
-```sh
-/opt/libshelf/libshelf import ... --replace
-```
-
-## Запуск
+### Запуск
 
 ```sh
 screen -dmaS libshelf /opt/libshelf/libshelf serve \
@@ -44,11 +65,21 @@ screen -dmaS libshelf /opt/libshelf/libshelf serve \
   --data-dir /opt/libshelf/data
 ```
 
+Или сразу `sudo /opt/libshelf/deploy.sh` после появления release `latest`.
+
 Проверка:
 
 ```sh
 curl -s http://127.0.0.1:12380/health
 curl -s 'http://127.0.0.1:12380/api/search?q=кинг%20сияние'
+```
+
+## Сборка вручную
+
+```sh
+git clone https://github.com/amachulan/libshelf.git
+cd libshelf
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o libshelf ./cmd/libshelf
 ```
 
 ## Nginx
@@ -64,16 +95,6 @@ proxy_set_header Connection "upgrade";
 ```
 
 Откройте `https://books.machulan.ru` и проверьте поиск `кинг сияние`.
-
-## Откат на Polka
-
-```sh
-pkill -f '/opt/libshelf/libshelf serve'
-screen -dmaS polka /opt/polka/polka serve \
-  --addr 127.0.0.1:12380 \
-  --library-dir "/mnt/share/Книги/fb2.Flibusta.Net" \
-  --data-dir /opt/polka/data
-```
 
 ## API
 

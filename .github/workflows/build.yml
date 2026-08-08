@@ -1,0 +1,45 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build linux amd64
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags="-s -w" \
+            -o libshelf-linux-amd64 ./cmd/libshelf
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libshelf-linux-amd64
+          path: libshelf-linux-amd64
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish/update pre-release latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest libshelf-linux-amd64 --clobber
+          else
+            gh release create latest libshelf-linux-amd64 \
+              --title "Latest" \
+              --notes "Auto-built from master. Use scripts/deploy.sh on the server." \
+              --prerelease
+          fi
