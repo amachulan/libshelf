@@ -653,8 +653,72 @@ async function openReader(id) {
   });
 }
 
+function fullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function fullscreenSupported() {
+  const el = document.documentElement;
+  return !!(el.requestFullscreen || el.webkitRequestFullscreen);
+}
+
+function exitReaderFullscreen() {
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  if (fullscreenElement() && exit) {
+    return Promise.resolve(exit.call(document)).catch(() => {});
+  }
+  return Promise.resolve();
+}
+
+function syncFullscreenButton() {
+  const btn = $("reader-fs-btn");
+  if (!btn) return;
+  if (!fullscreenSupported()) {
+    btn.classList.add("hidden");
+    return;
+  }
+  btn.classList.remove("hidden");
+  const on = !!fullscreenElement();
+  btn.textContent = on ? "↙" : "⛶";
+  btn.title = on ? "Свернуть экран" : "На весь экран";
+  btn.setAttribute("aria-label", btn.title);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
+function preserveReaderPageAfterResize() {
+  if (!pageModeActive() || !readerBookId) return;
+  const y = readerPageOffsets[readerPageIndex] || 0;
+  requestAnimationFrame(() => {
+    rebuildReaderPages();
+    let best = 0;
+    for (let i = 0; i < readerPageOffsets.length; i++) {
+      if (readerPageOffsets[i] <= y + 1) best = i;
+      else break;
+    }
+    readerPageIndex = best;
+    applyPageTransform(false);
+  });
+}
+
+async function toggleReaderFullscreen() {
+  if (!fullscreenSupported()) return;
+  try {
+    if (fullscreenElement()) {
+      await exitReaderFullscreen();
+    } else {
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      await req.call(el);
+    }
+  } catch {
+    /* user denied or browser blocked */
+  }
+  syncFullscreenButton();
+}
+
 function closeReader() {
   saveReaderProgress();
+  exitReaderFullscreen();
   readerBookId = null;
   readerPageIndex = 0;
   readerPageOffsets = [0];
@@ -1005,6 +1069,16 @@ $("reader-font-down").addEventListener("click", () => {
   fontScale = Math.max(0.85, Math.round((fontScale - 0.1) * 10) / 10);
   applyFontScale();
 });
+$("reader-fs-btn").addEventListener("click", () => {
+  toggleReaderFullscreen();
+});
+function onFullscreenChange() {
+  syncFullscreenButton();
+  preserveReaderPageAfterResize();
+}
+document.addEventListener("fullscreenchange", onFullscreenChange);
+document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+syncFullscreenButton();
 
 window.addEventListener("keydown", (e) => {
   if (!pageModeActive()) return;

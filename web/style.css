@@ -705,6 +705,25 @@ body.reading-mode {
   background: var(--bg);
 }
 
+/* Fullscreen reading — fill the screen after Fullscreen API. */
+:fullscreen body.reading-mode,
+:-webkit-full-screen body.reading-mode {
+  background: var(--bg);
+}
+:fullscreen #reader,
+:-webkit-full-screen #reader,
+:fullscreen body.reader-pages .reader,
+:-webkit-full-screen body.reader-pages .reader {
+  height: 100%;
+  min-height: 100%;
+}
+:fullscreen html.reader-pages-lock,
+:fullscreen html.reader-pages-lock body,
+:-webkit-full-screen html.reader-pages-lock,
+:-webkit-full-screen html.reader-pages-lock body {
+  height: 100%;
+}
+
 /* Lock document scroll in page mode — nothing native should pan/scroll. */
 html.reader-pages-lock,
 html.reader-pages-lock body {
