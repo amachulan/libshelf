@@ -9,7 +9,8 @@ import (
 )
 
 type Store struct {
-	db *sql.DB
+	db       *sql.DB
+	catCache catalogCache
 }
 
 func Open(path string) (*Store, error) {

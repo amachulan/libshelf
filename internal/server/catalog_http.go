@@ -28,13 +28,16 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 
 	switch parts[0] {
 	case "authors":
+		letters, err := s.store.AuthorLetters()
+		if err != nil {
+			httpError(w, err, 500)
+			return
+		}
+		if letter == "" && len(letters) > 0 {
+			letter = letters[0].Letter
+		}
 		if letter == "" {
-			letters, err := s.store.AuthorLetters()
-			if err != nil {
-				httpError(w, err, 500)
-				return
-			}
-			writeJSON(w, map[string]any{"letters": letters})
+			writeJSON(w, map[string]any{"letters": letters, "authors": []any{}})
 			return
 		}
 		items, err := s.store.AuthorsByLetter(letter, limit, offset)
@@ -42,15 +45,18 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 			httpError(w, err, 500)
 			return
 		}
-		writeJSON(w, map[string]any{"letter": letter, "authors": items})
+		writeJSON(w, map[string]any{"letters": letters, "letter": letter, "authors": items})
 	case "series":
+		letters, err := s.store.SeriesLetters()
+		if err != nil {
+			httpError(w, err, 500)
+			return
+		}
+		if letter == "" && len(letters) > 0 {
+			letter = letters[0].Letter
+		}
 		if letter == "" {
-			letters, err := s.store.SeriesLetters()
-			if err != nil {
-				httpError(w, err, 500)
-				return
-			}
-			writeJSON(w, map[string]any{"letters": letters})
+			writeJSON(w, map[string]any{"letters": letters, "series": []any{}})
 			return
 		}
 		items, err := s.store.SeriesByLetter(letter, limit, offset)
@@ -58,16 +64,13 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 			httpError(w, err, 500)
 			return
 		}
-		writeJSON(w, map[string]any{"letter": letter, "series": items})
+		writeJSON(w, map[string]any{"letters": letters, "letter": letter, "series": items})
 	case "genres":
 		if len(parts) == 1 {
 			items, err := s.store.ListGenres()
 			if err != nil {
 				httpError(w, err, 500)
 				return
-			}
-			for i := range items {
-				items[i].Name = genres.Name(items[i].Code)
 			}
 			writeJSON(w, map[string]any{"genres": items})
 			return

@@ -73,6 +73,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS book_search USING fts5(
 var schemaIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_books_lang_deleted ON books(lang, deleted)`,
 	`CREATE INDEX IF NOT EXISTS idx_books_folder ON books(folder_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_books_series ON books(series_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_book_authors_author ON book_authors(author_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_book_genres_genre ON book_genres(genre_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_authors_name ON authors(last_name, first_name)`,
 }

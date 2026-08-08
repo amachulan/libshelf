@@ -543,18 +543,15 @@ async function openCatalog(tab, letter) {
     btn.classList.toggle("is-active", btn.getAttribute("data-cat") === catalogTab);
   });
 
-  const qs = new URLSearchParams();
-  qs.set("catalog", catalogTab);
-  if (catalogLetter) qs.set("letter", catalogLetter);
-  history.pushState({ catalog: catalogTab, letter: catalogLetter }, "", "/?" + qs.toString());
-
   const list = $("catalog-list");
   const emptyEl = $("catalog-empty");
   list.innerHTML = "";
   emptyEl.classList.add("hidden");
+  show("catalog");
 
   if (catalogTab === "genres") {
     $("catalog-letters").classList.add("hidden");
+    history.pushState({ catalog: "genres" }, "", "/?catalog=genres");
     const res = await api("/api/catalog/genres");
     if (!res.ok) {
       alert("Не удалось загрузить жанры");
@@ -568,37 +565,25 @@ async function openCatalog(tab, letter) {
       name: g.name || g.code,
       books: g.books,
     })), "genres");
-    show("catalog");
     return;
   }
 
-  const lettersRes = await api("/api/catalog/" + catalogTab);
-  if (!lettersRes.ok) {
+  let url = "/api/catalog/" + catalogTab + "?limit=150";
+  if (catalogLetter) url += "&letter=" + encodeURIComponent(catalogLetter);
+  const res = await api(url);
+  if (!res.ok) {
     alert("Не удалось загрузить каталог");
     return;
   }
-  const lettersData = await lettersRes.json();
-  const letters = lettersData.letters || [];
-  if (!catalogLetter && letters.length) {
-    catalogLetter = letters[0].letter;
-  }
-  renderCatalogLetters(letters);
-  if (!catalogLetter) {
-    emptyEl.classList.remove("hidden");
-    show("catalog");
-    return;
-  }
-  // refresh active letter
-  renderCatalogLetters(letters);
-
-  const res = await api(
-    "/api/catalog/" + catalogTab + "?letter=" + encodeURIComponent(catalogLetter) + "&limit=300"
-  );
-  if (!res.ok) {
-    alert("Не удалось загрузить список");
-    return;
-  }
   const data = await res.json();
+  const letters = data.letters || [];
+  catalogLetter = data.letter || catalogLetter || (letters[0] && letters[0].letter) || "";
+  const qs = new URLSearchParams();
+  qs.set("catalog", catalogTab);
+  if (catalogLetter) qs.set("letter", catalogLetter);
+  history.pushState({ catalog: catalogTab, letter: catalogLetter }, "", "/?" + qs.toString());
+
+  renderCatalogLetters(letters);
   if (catalogTab === "authors") {
     renderCatalogRows(data.authors || [], "authors");
   } else {
@@ -608,7 +593,6 @@ async function openCatalog(tab, letter) {
       books: s.books,
     })), "series");
   }
-  show("catalog");
 }
 
 async function openLists(status) {

@@ -2,8 +2,12 @@ package store
 
 import (
 	"database/sql"
+	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
+
+	"libshelf/internal/genres"
 )
 
 type LetterCount struct {
@@ -29,6 +33,13 @@ type CatalogSeries struct {
 	Books int    `json:"books"`
 }
 
+type catalogCache struct {
+	mu            sync.Mutex
+	authorLetters []LetterCount
+	seriesLetters []LetterCount
+	genres        []CatalogGenre
+}
+
 func firstLetter(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -44,13 +55,33 @@ func firstLetter(name string) string {
 	return "#"
 }
 
+func normalizeLetter(letter string) string {
+	letter = strings.ToUpper(strings.TrimSpace(letter))
+	if letter == "Ё" {
+		return "Е"
+	}
+	return letter
+}
+
+func authorHasRUBooksSQL() string {
+	return `EXISTS (
+  SELECT 1 FROM book_authors ba
+  JOIN books b ON b.id = ba.book_id AND b.deleted = 0 AND b.lang = 'ru'
+  WHERE ba.author_id = a.id
+)`
+}
+
 func (s *Store) AuthorLetters() ([]LetterCount, error) {
+	s.catCache.mu.Lock()
+	defer s.catCache.mu.Unlock()
+	if s.catCache.authorLetters != nil {
+		return s.catCache.authorLetters, nil
+	}
+
 	rows, err := s.db.Query(`
-SELECT upper(substr(trim(a.last_name), 1, 1)), count(DISTINCT a.id)
+SELECT upper(replace(substr(trim(a.last_name), 1, 1), 'Ё', 'Е')), count(*)
 FROM authors a
-JOIN book_authors ba ON ba.author_id = a.id
-JOIN books b ON b.id = ba.book_id AND b.deleted = 0 AND b.lang = 'ru'
-WHERE trim(a.last_name) != ''
+WHERE ` + authorHasRUBooksSQL() + `
 GROUP BY 1`)
 	if err != nil {
 		return nil, err
@@ -58,27 +89,19 @@ GROUP BY 1`)
 	defer rows.Close()
 	merged := map[string]int{}
 	for rows.Next() {
-		var raw string
+		var raw sql.NullString
 		var n int
 		if err := rows.Scan(&raw, &n); err != nil {
 			return nil, err
 		}
-		merged[firstLetter(raw)] += n
+		merged[firstLetter(raw.String)] += n
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	var empty int
-	_ = s.db.QueryRow(`
-SELECT count(DISTINCT a.id)
-FROM authors a
-JOIN book_authors ba ON ba.author_id = a.id
-JOIN books b ON b.id = ba.book_id AND b.deleted = 0 AND b.lang = 'ru'
-WHERE trim(a.last_name) = ''`).Scan(&empty)
-	if empty > 0 {
-		merged["#"] += empty
-	}
-	return sortLetters(merged), nil
+	out := sortLetters(merged)
+	s.catCache.authorLetters = out
+	return out, nil
 }
 
 func sortLetters(merged map[string]int) []LetterCount {
@@ -94,8 +117,8 @@ func sortLetters(merged map[string]int) []LetterCount {
 			lat = append(lat, l)
 		}
 	}
-	sortStrings(cyr)
-	sortStrings(lat)
+	sort.Strings(cyr)
+	sort.Strings(lat)
 	out := make([]LetterCount, 0, len(merged))
 	for _, l := range cyr {
 		out = append(out, LetterCount{Letter: l, Count: merged[l]})
@@ -109,57 +132,48 @@ func sortLetters(merged map[string]int) []LetterCount {
 	return out
 }
 
-func sortStrings(a []string) {
-	for i := 0; i < len(a); i++ {
-		for j := i + 1; j < len(a); j++ {
-			if a[j] < a[i] {
-				a[i], a[j] = a[j], a[i]
-			}
-		}
-	}
-}
-
 func (s *Store) AuthorsByLetter(letter string, limit, offset int) ([]CatalogPerson, error) {
-	letter = strings.ToUpper(strings.TrimSpace(letter))
-	if letter == "Ё" {
-		letter = "Е"
-	}
+	letter = normalizeLetter(letter)
 	if limit <= 0 {
 		limit = 100
 	}
-	if limit > 500 {
-		limit = 500
+	if limit > 300 {
+		limit = 300
 	}
 	if offset < 0 {
 		offset = 0
 	}
 
+	bookCount := `(
+  SELECT count(*) FROM book_authors ba
+  JOIN books b ON b.id = ba.book_id AND b.deleted = 0 AND b.lang = 'ru'
+  WHERE ba.author_id = a.id
+)`
+	q := `
+SELECT a.id,
+       trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name),
+       ` + bookCount + `
+FROM authors a
+WHERE ` + authorHasRUBooksSQL() + `
+`
 	var (
 		rows *sql.Rows
 		err  error
 	)
-	base := `
-SELECT a.id,
-       trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name),
-       count(*)
-FROM authors a
-JOIN book_authors ba ON ba.author_id = a.id
-JOIN books b ON b.id = ba.book_id AND b.deleted = 0 AND b.lang = 'ru'
-`
 	if letter == "#" {
-		rows, err = s.db.Query(base+`
-WHERE trim(a.last_name) = ''
-   OR (
-     upper(replace(substr(trim(a.last_name),1,1),'Ё','Е')) NOT BETWEEN 'A' AND 'Z'
-     AND upper(replace(substr(trim(a.last_name),1,1),'Ё','Е')) NOT BETWEEN 'А' AND 'Я'
-   )
-GROUP BY a.id
+		rows, err = s.db.Query(q+`
+AND (
+  trim(a.last_name) = ''
+  OR (
+    upper(replace(substr(trim(a.last_name),1,1),'Ё','Е')) NOT BETWEEN 'A' AND 'Z'
+    AND upper(replace(substr(trim(a.last_name),1,1),'Ё','Е')) NOT BETWEEN 'А' AND 'Я'
+  )
+)
 ORDER BY a.last_name, a.first_name
 LIMIT ? OFFSET ?`, limit, offset)
 	} else {
-		rows, err = s.db.Query(base+`
-WHERE upper(replace(substr(trim(a.last_name),1,1),'Ё','Е')) = ?
-GROUP BY a.id
+		rows, err = s.db.Query(q+`
+AND upper(replace(substr(trim(a.last_name),1,1),'Ё','Е')) = ?
 ORDER BY a.last_name, a.first_name
 LIMIT ? OFFSET ?`, letter, limit, offset)
 	}
@@ -171,11 +185,19 @@ LIMIT ? OFFSET ?`, letter, limit, offset)
 }
 
 func (s *Store) SeriesLetters() ([]LetterCount, error) {
+	s.catCache.mu.Lock()
+	defer s.catCache.mu.Unlock()
+	if s.catCache.seriesLetters != nil {
+		return s.catCache.seriesLetters, nil
+	}
+
 	rows, err := s.db.Query(`
-SELECT upper(substr(trim(s.title), 1, 1)), count(*)
+SELECT upper(replace(substr(trim(s.title), 1, 1), 'Ё', 'Е')), count(*)
 FROM series s
-JOIN books b ON b.series_id = s.id AND b.deleted = 0 AND b.lang = 'ru'
-WHERE trim(s.title) != ''
+WHERE EXISTS (
+  SELECT 1 FROM books b
+  WHERE b.series_id = s.id AND b.deleted = 0 AND b.lang = 'ru'
+)
 GROUP BY 1`)
 	if err != nil {
 		return nil, err
@@ -183,56 +205,62 @@ GROUP BY 1`)
 	defer rows.Close()
 	merged := map[string]int{}
 	for rows.Next() {
-		var raw string
+		var raw sql.NullString
 		var n int
 		if err := rows.Scan(&raw, &n); err != nil {
 			return nil, err
 		}
-		merged[firstLetter(raw)] += n
+		merged[firstLetter(raw.String)] += n
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return sortLetters(merged), nil
+	out := sortLetters(merged)
+	s.catCache.seriesLetters = out
+	return out, nil
 }
 
 func (s *Store) SeriesByLetter(letter string, limit, offset int) ([]CatalogSeries, error) {
-	letter = strings.ToUpper(strings.TrimSpace(letter))
-	if letter == "Ё" {
-		letter = "Е"
-	}
+	letter = normalizeLetter(letter)
 	if limit <= 0 {
 		limit = 100
 	}
-	if limit > 500 {
-		limit = 500
+	if limit > 300 {
+		limit = 300
 	}
 	if offset < 0 {
 		offset = 0
 	}
+	bookCount := `(
+  SELECT count(*) FROM books b
+  WHERE b.series_id = s.id AND b.deleted = 0 AND b.lang = 'ru'
+)`
+	base := `
+SELECT s.id, s.title, ` + bookCount + `
+FROM series s
+WHERE EXISTS (
+  SELECT 1 FROM books b
+  WHERE b.series_id = s.id AND b.deleted = 0 AND b.lang = 'ru'
+)
+`
 	var (
 		rows *sql.Rows
 		err  error
 	)
-	base := `
-SELECT s.id, s.title, count(*)
-FROM series s
-JOIN books b ON b.series_id = s.id AND b.deleted = 0 AND b.lang = 'ru'
-`
 	if letter == "#" {
 		rows, err = s.db.Query(base+`
-WHERE trim(s.title) = ''
-   OR (
-     upper(replace(substr(trim(s.title),1,1),'Ё','Е')) NOT BETWEEN 'A' AND 'Z'
-     AND upper(replace(substr(trim(s.title),1,1),'Ё','Е')) NOT BETWEEN 'А' AND 'Я'
-   )
-GROUP BY s.id
+AND (
+  trim(s.title) = ''
+  OR (
+    upper(replace(substr(trim(s.title),1,1),'Ё','Е')) NOT BETWEEN 'A' AND 'Z'
+    AND upper(replace(substr(trim(s.title),1,1),'Ё','Е')) NOT BETWEEN 'А' AND 'Я'
+  )
+)
 ORDER BY s.title
 LIMIT ? OFFSET ?`, limit, offset)
 	} else {
 		rows, err = s.db.Query(base+`
-WHERE upper(replace(substr(trim(s.title),1,1),'Ё','Е')) = ?
-GROUP BY s.id
+AND upper(replace(substr(trim(s.title),1,1),'Ё','Е')) = ?
 ORDER BY s.title
 LIMIT ? OFFSET ?`, letter, limit, offset)
 	}
@@ -252,13 +280,18 @@ LIMIT ? OFFSET ?`, letter, limit, offset)
 }
 
 func (s *Store) ListGenres() ([]CatalogGenre, error) {
+	s.catCache.mu.Lock()
+	defer s.catCache.mu.Unlock()
+	if s.catCache.genres != nil {
+		return s.catCache.genres, nil
+	}
+
 	rows, err := s.db.Query(`
 SELECT g.code, count(*)
 FROM genres g
 JOIN book_genres bg ON bg.genre_id = g.id
 JOIN books b ON b.id = bg.book_id AND b.deleted = 0 AND b.lang = 'ru'
-GROUP BY g.id
-ORDER BY count(*) DESC, g.code`)
+GROUP BY g.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -269,9 +302,17 @@ ORDER BY count(*) DESC, g.code`)
 		if err := rows.Scan(&g.Code, &g.Books); err != nil {
 			return nil, err
 		}
+		g.Name = genres.Name(g.Code)
 		out = append(out, g)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	s.catCache.genres = out
+	return out, nil
 }
 
 func (s *Store) GenreBooks(code string, limit, offset int) (*NamedList, error) {
@@ -307,8 +348,8 @@ WHERE bg.genre_id = ? AND b.deleted = 0 AND b.lang = 'ru'`, genreID).Scan(&total
 SELECT`+bookColumns+`
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
+JOIN book_genres bg ON bg.book_id = b.id AND bg.genre_id = ?
 WHERE b.deleted = 0 AND b.lang = 'ru'
-  AND b.id IN (SELECT book_id FROM book_genres WHERE genre_id = ?)
 ORDER BY b.title
 LIMIT ? OFFSET ?`, genreID, limit, offset)
 	if err != nil {
