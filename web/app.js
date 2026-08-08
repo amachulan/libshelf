@@ -416,6 +416,7 @@ function lockPageScroll(on) {
 function applyReadMode() {
   const paging = readMode === "pages" && document.body.classList.contains("reading-mode");
   document.body.classList.toggle("reader-pages", readMode === "pages");
+  if (!paging) document.body.classList.remove("reader-chrome-hidden");
   lockPageScroll(paging);
   const btn = $("reader-mode-btn");
   if (btn) {
@@ -568,7 +569,7 @@ function closeReader() {
   readerBookId = null;
   readerPageIndex = 0;
   $("reader-toc").classList.add("hidden");
-  document.body.classList.remove("reader-pages");
+  document.body.classList.remove("reader-pages", "reader-chrome-hidden");
   lockPageScroll(false);
   const el = readerContentEl();
   if (el) {
@@ -861,24 +862,37 @@ readerEl.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 let readerTouchStartY = 0;
+let readerTouchStartX = 0;
+function touchOnReaderChrome(target) {
+  return !!(target && target.closest && target.closest(".reader-bar, .reader-toc, .reader-page-nav"));
+}
+function pageTouchMoveBlock(e) {
+  if (!pageModeActive()) return;
+  if (touchOnReaderChrome(e.target)) return;
+  e.preventDefault();
+}
+// Capture on document too — Android/Brave can still pan the page otherwise.
+document.addEventListener("touchmove", pageTouchMoveBlock, { passive: false, capture: true });
 readerEl.addEventListener("touchstart", (e) => {
   if (!pageModeActive()) return;
+  readerTouchStartX = e.changedTouches[0]?.clientX || 0;
   readerTouchStartY = e.changedTouches[0]?.clientY || 0;
 }, { passive: true, capture: true });
-readerEl.addEventListener("touchmove", (e) => {
-  if (!pageModeActive()) return;
-  e.preventDefault();
-}, { passive: false, capture: true });
 readerEl.addEventListener("touchend", (e) => {
   if (!pageModeActive()) return;
-  // Ignore swipes that started on toolbar controls.
-  const startTarget = e.target;
-  if (startTarget && startTarget.closest && startTarget.closest(".reader-bar, .reader-toc, .reader-page-nav")) {
+  if (touchOnReaderChrome(e.target)) return;
+  const x = e.changedTouches[0]?.clientX || 0;
+  const y = e.changedTouches[0]?.clientY || 0;
+  const dx = x - readerTouchStartX;
+  const dy = readerTouchStartY - y;
+  if (Math.abs(dy) < 28 && Math.abs(dx) < 28) {
+    // Tap text: toggle chrome for a larger reading area.
+    const pos = readerPosition();
+    document.body.classList.toggle("reader-chrome-hidden");
+    requestAnimationFrame(() => restoreReaderPosition(pos));
     return;
   }
-  const y = e.changedTouches[0]?.clientY || 0;
-  const dy = readerTouchStartY - y;
-  if (Math.abs(dy) < 40) return;
+  if (Math.abs(dy) < 40 || Math.abs(dy) < Math.abs(dx)) return;
   flipReaderPage(dy > 0 ? 1 : -1);
 }, { passive: true, capture: true });
 

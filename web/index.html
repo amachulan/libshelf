@@ -13,6 +13,13 @@
         t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
       }
       document.documentElement.setAttribute("data-theme", t);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (!meta) {
+        meta = document.createElement("meta");
+        meta.name = "theme-color";
+        document.head.appendChild(meta);
+      }
+      meta.content = t === "dark" ? "#12161a" : "#f3efe6";
       // Avoid flashing the home screen while restoring /?read=…
       if (/(?:^|[?&])read=/.test(location.search)) {
         document.documentElement.classList.add("boot-reader");
@@ -149,10 +156,12 @@
 
   <div id="reader" class="reader hidden">
     <header class="reader-bar">
-      <button type="button" id="reader-back" class="text-btn">← Назад</button>
+      <button type="button" id="reader-back" class="icon-btn" title="Назад" aria-label="Назад">←</button>
       <div class="reader-title" id="reader-title"></div>
       <div class="reader-tools">
-        <button type="button" id="reader-toc-btn" class="top-btn">Оглавление</button>
+        <button type="button" id="reader-toc-btn" class="top-btn" title="Оглавление" aria-label="Оглавление">
+          <span class="label-short">Оглав.</span><span class="label-full">Оглавление</span>
+        </button>
         <button type="button" id="reader-mode-btn" class="top-btn" title="Режим чтения" aria-label="Режим чтения">Страницы</button>
         <button type="button" id="reader-font-down" class="icon-btn" title="Мельче" aria-label="Мельче">A−</button>
         <button type="button" id="reader-font-up" class="icon-btn" title="Крупнее" aria-label="Крупнее">A+</button>

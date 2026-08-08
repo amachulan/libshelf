@@ -627,8 +627,8 @@ html.boot-reader body {
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.55rem 1rem;
+  gap: 0.45rem;
+  padding: 0.45rem 0.65rem;
   border-bottom: 1px solid var(--line);
   background: var(--header-bg);
   backdrop-filter: blur(8px);
@@ -647,9 +647,16 @@ html.boot-reader body {
 .reader-tools {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+  gap: 0.3rem;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.reader-tools .label-full { display: none; }
+@media (min-width: 641px) {
+  .reader-tools .label-short { display: none; }
+  .reader-tools .label-full { display: inline; }
 }
 
 .reader-toc {
@@ -777,12 +784,10 @@ body.reader-pages .reader-bar {
 }
 
 body.reader-pages .reader-stage {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  display: grid;
-  grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
-  align-items: stretch;
   overflow: hidden;
   touch-action: none;
 }
@@ -800,24 +805,39 @@ body.reader-pages .reader-viewport {
 }
 
 body.reader-pages .reader-page-nav {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2;
   border: 0;
-  background: var(--bg);
+  background: transparent;
   color: var(--muted);
-  font-size: 1.75rem;
+  font-size: 1.6rem;
   line-height: 1;
   cursor: pointer;
   padding: 0;
+  opacity: 0.4;
   user-select: none;
   touch-action: manipulation;
 }
 
+body.reader-pages .reader-page-prev { left: 0; }
+body.reader-pages .reader-page-next { right: 0; }
+
 body.reader-pages .reader-page-nav:hover {
+  opacity: 0.9;
   color: var(--ink);
-  background: color-mix(in srgb, var(--line) 28%, var(--bg));
+  background: color-mix(in srgb, var(--line) 22%, transparent);
+}
+
+/* Tap text to hide chrome and use more of the screen. */
+body.reader-pages.reader-chrome-hidden .reader-bar,
+body.reader-pages.reader-chrome-hidden .reader-page-nav {
+  display: none;
 }
 
 /*
@@ -847,12 +867,35 @@ body.reader-pages .reader-content .fb2-img {
 }
 
 @media (max-width: 640px) {
-  body.reader-pages .reader-stage {
-    grid-template-columns: 1.75rem minmax(0, 1fr) 1.75rem;
+  .reader-bar {
+    gap: 0.3rem;
+    padding: 0.35rem 0.4rem;
   }
-  #reader-mode-btn {
-    padding: 0 0.55rem;
-    font-size: 0.8rem;
+  .reader-title {
+    display: none;
+  }
+  .reader-tools {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    gap: 0.25rem;
+  }
+  .reader-bar .top-btn {
+    height: 32px;
+    padding: 0 0.45rem;
+    font-size: 0.78rem;
+  }
+  .reader-bar .icon-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 0.85rem;
+  }
+  body.reader-pages .reader-page-nav {
+    width: 1.85rem;
+    font-size: 1.35rem;
+    opacity: 0.28;
+  }
+  body.reader-pages .reader-content {
+    padding: 0.85rem 0.85rem 1.1rem;
   }
 }
 
