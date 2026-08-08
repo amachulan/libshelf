@@ -154,7 +154,7 @@ func (s *Server) opdsRoot(w http.ResponseWriter, base string) {
 		Xmlns:   atomNS,
 		XmlnsOD: opdsNS,
 		ID:      base + "/opds",
-		Title:   "Моя полка",
+		Title:   "LibShelf",
 		Updated: now,
 		Links: []atomLink{
 			{Rel: "self", Href: base + "/opds", Type: opdsType},
@@ -188,7 +188,7 @@ func (s *Server) opdsOpenSearch(w http.ResponseWriter, base string) {
 	w.Header().Set("Content-Type", "application/opensearchdescription+xml; charset=utf-8")
 	_, _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
 <OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
-  <ShortName>Моя полка</ShortName>
+  <ShortName>LibShelf</ShortName>
   <Description>Поиск книг</Description>
   <Url type="application/atom+xml;profile=opds-catalog;kind=acquisition"
        template=%q/>

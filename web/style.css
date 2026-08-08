@@ -186,11 +186,11 @@ body {
 
 .brand {
   font-weight: 750;
-  font-size: 1.05rem;
+  font-size: 1.08rem;
   line-height: 1;
   color: var(--ink);
   text-decoration: none;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
   white-space: nowrap;
 }
 
