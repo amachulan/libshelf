@@ -1,147 +1,178 @@
 # libshelf
 
-Личная оболочка для коллекции Flibusta (`.inpx` + архивы fb2).
+Self-hosted веб-каталог для коллекции Flibusta: индекс `.inpx` + архивы FB2.
 
-- поиск сразу по **автору + названию + серии** (`кинг сияние`)
-- по умолчанию только **`lang = ru`**
-- карточка книги, обложка из FB2, скачивание
+Один статический бинарник на Go, SQLite + FTS5, встроенный UI. Подходит для домашнего сервера, NAS или VPS: импортируете каталог, указываете каталог с архивами и поднимаете HTTP.
+
+## Возможности
+
+- поиск сразу по **автору + названию + серии** (например `кинг сияние`)
+- по умолчанию в выдаче только книги с **`lang = ru`**
+- карточка книги, обложка из FB2, скачивание FB2
 - **читалка** FB2 в браузере (скролл, оглавление, прогресс)
 - личные списки **Читаю / Прочитано / Хочу**
 - **каталог**: авторы и серии по буквам, жанры
-- **OPDS** для ридеров (`/opds`, HTTP Basic при `--auth=users`)
-- вход с ролями **читатель** / **админ**
-- один бинарник Go, SQLite + FTS5
+- **OPDS** для ридеров (`/opds`)
+- вход с ролями **читатель** / **админ** (можно отключить)
 
-## Быстрый деплой новых версий (тест)
+## Что нужно
 
-Каждый push в `master` собирает linux-бинарник в GitHub Actions:
-- **Artifact** `libshelf-linux-amd64` (вкладка Actions)
-- **Pre-release** [`latest`](https://github.com/amachulan/libshelf/releases/tag/latest) с тем же файлом
+1. Файл каталога `.inpx` (как у Flibusta / совместимых сборок).
+2. Каталог с архивами книг, на которые ссылается этот `.inpx` (`--library-dir`).
+3. Каталог данных для SQLite и кэша обложек (`--data-dir`).
 
-На сервере один раз:
+Пути ниже — примеры; подставьте свои.
+
+## Быстрый старт
+
+### 1. Бинарник
+
+С [GitHub Releases](https://github.com/amachulan/libshelf/releases) (pre-release `latest`) или сборка из исходников:
+
+```sh
+git clone https://github.com/amachulan/libshelf.git
+cd libshelf
+CGO_ENABLED=0 go build -o libshelf ./cmd/libshelf
+```
+
+Для Linux amd64 без CGO:
+
+```sh
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o libshelf ./cmd/libshelf
+```
+
+### 2. Импорт каталога
+
+```sh
+./libshelf import \
+  --inpx /path/to/catalog.inpx \
+  --library-dir /path/to/fb2/archives \
+  --data-dir /path/to/libshelf-data
+```
+
+Повторный полный импорт (пересоздать индекс книг): добавьте `--replace`.  
+База пользователей (`users.db`: аккаунты, полки, прогресс) при `--replace` **не** трогается.
+
+### 3. Запуск сервера
+
+```sh
+./libshelf serve \
+  --addr 127.0.0.1:12380 \
+  --library-dir /path/to/fb2/archives \
+  --data-dir /path/to/libshelf-data \
+  --auth users
+```
+
+Откройте в браузере `http://127.0.0.1:12380`.
+
+Проверка:
+
+```sh
+curl -s http://127.0.0.1:12380/health
+# ok <git-sha>
+```
+
+## Авторизация
+
+По умолчанию `--auth=users`: без логина UI и API недоступны (кроме `/health`, страницы входа и статики логина).
+
+При первом запуске, если пользователей ещё нет, создаётся админ:
+- из переменных окружения `LIBSHELF_ADMIN_USER` / `LIBSHELF_ADMIN_PASS`, или
+- логин `admin` и случайный пароль (смотрите лог процесса при первом старте)
+
+Роли:
+
+| Роль | Доступ |
+|------|--------|
+| **reader** | поиск, карточки, скачивание, читалка, свои списки |
+| **admin** | всё то же + управление пользователями в UI |
+
+Добавить пользователя из CLI:
+
+```sh
+./libshelf user add \
+  --data-dir /path/to/libshelf-data \
+  --username alice \
+  --password 'secret' \
+  --role reader
+```
+
+Открытый режим без логина: `--auth=none`.
+
+## OPDS
+
+Корень каталога для приложений вроде KOReader / Moon+ / Aldiko:
+
+```
+http://HOST:PORT/opds
+```
+
+При `--auth=users` клиент должен уметь **HTTP Basic** (тот же логин/пароль, что и в веб-UI).  
+Basic Auth намеренно работает только для `/opds`, `/download/` и `/cover/`, чтобы браузер не подставлял сохранённые OPDS-учётные данные на весь сайт.
+
+Поиск: OpenSearch из корневого фида или `/opds/search?q=...`.
+
+## Обратный прокси (nginx)
+
+Типичная схема: libshelf слушает localhost, снаружи — HTTPS через nginx/Caddy.
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name books.example.com;
+
+    # ssl_certificate …;
+    # ssl_certificate_key …;
+
+    location / {
+        proxy_pass http://127.0.0.1:12380;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+Важно передать `X-Forwarded-Proto`, иначе cookie сессии могут выставиться без флага `Secure` за HTTPS.
+
+## Обновление с GitHub Releases
+
+Каждый push в `master` собирает linux amd64 в Actions и обновляет pre-release [`latest`](https://github.com/amachulan/libshelf/releases/tag/latest).
+
+Вспомогательный скрипт `scripts/deploy.sh`:
+
+- ждёт публикацию **текущего** commit в `latest` (не ставит предыдущую сборку);
+- скачивает бинарник, сверяет `libshelf version` с SHA;
+- подменяет бинарник и перезапускает процесс в `screen` (пути настраиваются env).
+
+Пример установки скрипта:
 
 ```sh
 sudo mkdir -p /opt/libshelf
 sudo curl -fsSL -o /opt/libshelf/deploy.sh \
   https://raw.githubusercontent.com/amachulan/libshelf/master/scripts/deploy.sh
 sudo chmod +x /opt/libshelf/deploy.sh
-```
-
-`deploy.sh` качает бинарник через **curl** (gh не обязателен).
-
-Дальше после каждого `git push` в master:
-
-```sh
 sudo /opt/libshelf/deploy.sh
 ```
 
-Скрипт ждёт, пока Actions опубликует **текущий** commit в release `latest`, скачивает бинарник, сверяет `libshelf version` с SHA и только потом перезапускает `screen`.  
-Так не ставится «предыдущая» сборка, если деплой запустить раньше, чем дособирался CI.  
-Базу и inpx **не трогает**.
+Переменные (опционально): `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users`|`none`), `LIBSHELF_DEPLOY_WAIT`.
 
-Проверка, что на сервере нужная версия: `curl -s http://127.0.0.1:12380/health` → `ok <git-sha>`.
+Импорт и базу скрипт **не** трогает — только бинарник и перезапуск `serve`.
 
-Переменные окружения (опционально): `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users`|`none`).
+## CLI
 
-## Авторизация
-
-По умолчанию `--auth=users`: без логина каталог недоступен.
-
-При первом запуске, если пользователей ещё нет, создаётся админ:
-- из env `LIBSHELF_ADMIN_USER` / `LIBSHELF_ADMIN_PASS`, или
-- `admin` + случайный пароль (смотрите `screen -r libshelf` / логи)
-
-Роли:
-- **reader** — поиск, карточки, скачивание, читалка, свои списки
-- **admin** — всё то же + управление пользователями в UI
-
-Списки и прогресс чтения хранятся в `users.db` и не сбрасываются при `import --replace`.
-
-Добавить пользователя вручную:
-
-```sh
-/opt/libshelf/libshelf user add \
-  --data-dir /opt/libshelf/data \
-  --username alice \
-  --password 'secret' \
-  --role reader
+```text
+libshelf import  --inpx FILE --library-dir DIR --data-dir DIR [--replace]
+libshelf serve   --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none]
+libshelf user add --data-dir DIR --username NAME --password PASS [--role admin|reader]
+libshelf version
 ```
 
-Открытый режим (без логина): `--auth=none` или `LIBSHELF_AUTH=none` в deploy.
-
-## Первая установка
-
-```sh
-sudo mkdir -p /opt/libshelf/data
-# либо собрать локально / скачать с release latest:
-gh release download latest -R amachulan/libshelf -p libshelf-linux-amd64 -D /tmp
-sudo install -m 755 /tmp/libshelf-linux-amd64 /opt/libshelf/libshelf
-```
-
-### Импорт (один раз)
-
-```sh
-/opt/libshelf/libshelf import \
-  --inpx "/mnt/share/Книги/fb2.Flibusta.Net/flibusta_fb2_local.inpx" \
-  --library-dir "/mnt/share/Книги/fb2.Flibusta.Net" \
-  --data-dir /opt/libshelf/data
-```
-
-Повторный импорт каталога: добавить `--replace`.
-
-### Запуск
-
-```sh
-screen -dmaS libshelf /opt/libshelf/libshelf serve \
-  --addr 127.0.0.1:12380 \
-  --library-dir "/mnt/share/Книги/fb2.Flibusta.Net" \
-  --data-dir /opt/libshelf/data \
-  --auth users
-```
-
-Или сразу `sudo /opt/libshelf/deploy.sh` после появления release `latest`.
-
-Проверка:
-
-```sh
-curl -s http://127.0.0.1:12380/health
-# пароль bootstrap смотрите в логе screen при первом старте
-```
-
-## Сборка вручную
-
-```sh
-git clone https://github.com/amachulan/libshelf.git
-cd libshelf
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o libshelf ./cmd/libshelf
-```
-
-## Nginx
-
-Конфиг для `books.machulan.ru` менять не нужно, если уже проксирует на `127.0.0.1:12380` с заголовками:
-
-```nginx
-proxy_set_header Host $host;
-proxy_set_header X-Forwarded-Host $host;
-proxy_set_header X-Forwarded-Proto $scheme;
-proxy_set_header Upgrade $http_upgrade;
-proxy_set_header Connection "upgrade";
-```
-
-Откройте `https://books.machulan.ru` и проверьте поиск `кинг сияние`.
-
-## OPDS
-
-Каталог для приложений вроде KOReader / Moon+ / Aldiko:
-
-```
-https://books.machulan.ru/opds
-```
-
-При `--auth=users` клиент должен уметь **HTTP Basic** (логин/пароль libshelf).  
-Поиск: OpenSearch по ссылке из корневого фида, или ` /opds/search?q=...`.
-
-## API
+## API (кратко)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
@@ -152,13 +183,14 @@ https://books.machulan.ru/opds
 | GET | `/api/shelf?status=reading\|read\|want` | список полки |
 | GET | `/api/shelf/continue` | продолжить чтение |
 | PUT | `/api/shelf/{id}` | `{status}` или `{status:null}` |
-| GET | `/api/catalog/authors` | буквы авторов |
-| GET | `/api/catalog/authors?letter=К` | авторы на букву |
-| GET | `/api/catalog/series?letter=` | серии |
+| GET | `/api/catalog/authors` | буквы / авторы |
+| GET | `/api/catalog/series` | серии |
 | GET | `/api/catalog/genres` | жанры |
 | GET | `/api/catalog/genres/{code}` | книги жанра |
 | GET | `/opds` | OPDS root |
 | GET | `/cover/{id}` | обложка |
 | GET | `/download/{id}` | скачать FB2 |
 | GET | `/api/stats` | число книг (ru) |
-| GET | `/health` | health-check |
+| GET | `/health` | health-check (`ok <sha>`) |
+
+При `--auth=users` большинство `/api/*` требуют сессию (cookie после `/api/login`).
