@@ -3,6 +3,11 @@ const errorEl = document.getElementById("error");
 const userInput = document.getElementById("username");
 const passInput = document.getElementById("password");
 
+if (new URLSearchParams(location.search).get("switch") === "1") {
+  errorEl.textContent = "Предыдущая сессия сброшена — войдите снова";
+  errorEl.classList.remove("hidden");
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   errorEl.classList.add("hidden");
@@ -14,9 +19,12 @@ form.addEventListener("submit", async (e) => {
   passInput.readOnly = true;
 
   try {
+    // Drop any leftover admin/reader cookie before switching accounts.
+    await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
     const res = await fetch("/api/login", {
       method: "POST",
       credentials: "same-origin",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });

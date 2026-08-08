@@ -115,3 +115,92 @@ func TestCreateUserAsAdmin(t *testing.T) {
 		t.Fatalf("duplicate create want 409, got %d", res3.StatusCode)
 	}
 }
+
+func TestLoginSwitchDropsStaleSessionCookie(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "libshelf.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	a, err := auth.Open(filepath.Join(dir, "users.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	if _, _, err := a.BootstrapAdmin("admin", "adminpass"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.CreateUser("test", "testpass", auth.RoleReader); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := server.New(server.Options{
+		Store: st, Auth: a, AuthRequired: true, LibDir: dir, CoverDir: dir,
+	})
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	adminLogin, _ := json.Marshal(map[string]string{"username": "admin", "password": "adminpass"})
+	adminRes, err := http.Post(ts.URL+"/api/login", "application/json", bytes.NewReader(adminLogin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminRes.Body.Close()
+	var adminCookie *http.Cookie
+	for _, c := range adminRes.Cookies() {
+		if c.Name == auth.CookieName() && c.Value != "" {
+			adminCookie = c
+			break
+		}
+	}
+	if adminCookie == nil {
+		t.Fatal("no admin cookie")
+	}
+
+	testLogin, _ := json.Marshal(map[string]string{"username": "test", "password": "testpass"})
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/login", bytes.NewReader(testLogin))
+	req.Header.Set("Content-Type", "application/json")
+	// Simulate a sticky previous cookie still attached while switching users.
+	req.AddCookie(adminCookie)
+	req.AddCookie(&http.Cookie{Name: auth.LegacyCookieName(), Value: adminCookie.Value})
+	loginRes, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginBody, _ := io.ReadAll(loginRes.Body)
+	loginRes.Body.Close()
+	if loginRes.StatusCode != http.StatusOK {
+		t.Fatalf("login %d: %s", loginRes.StatusCode, loginBody)
+	}
+
+	var testCookie *http.Cookie
+	for _, c := range loginRes.Cookies() {
+		if c.Name == auth.CookieName() && c.Value != "" && c.MaxAge >= 0 {
+			testCookie = c
+		}
+	}
+	if testCookie == nil {
+		t.Fatal("no test session cookie")
+	}
+
+	meReq, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/me", nil)
+	// Browser may still send the old cookie alongside the new one.
+	meReq.AddCookie(adminCookie)
+	meReq.AddCookie(testCookie)
+	meRes, err := http.DefaultClient.Do(meReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meBody, _ := io.ReadAll(meRes.Body)
+	meRes.Body.Close()
+	if meRes.StatusCode != http.StatusOK {
+		t.Fatalf("me %d: %s", meRes.StatusCode, meBody)
+	}
+	if !bytes.Contains(meBody, []byte(`"test"`)) {
+		t.Fatalf("expected session user test, got %s", meBody)
+	}
+	if bytes.Contains(meBody, []byte(`"admin"`)) {
+		t.Fatalf("stale admin session won: %s", meBody)
+	}
+}

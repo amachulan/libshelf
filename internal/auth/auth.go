@@ -18,10 +18,14 @@ const (
 	RoleAdmin  = "admin"
 	RoleReader = "reader"
 
-	sessionTTL   = 30 * 24 * time.Hour
-	cookieName   = "libshelf_session"
-	bcryptCost   = 10
+	sessionTTL = 30 * 24 * time.Hour
+	// Renamed from libshelf_session so browsers drop stuck Secure/non-Secure duplicates.
+	cookieName = "libshelf_sid"
+	bcryptCost = 10
 )
+
+// LegacyCookieName is cleared on login/logout so old jars cannot keep a prior user.
+func LegacyCookieName() string { return "libshelf_session" }
 
 var (
 	ErrInvalidCreds = errors.New("invalid username or password")

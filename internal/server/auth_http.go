@@ -56,8 +56,13 @@ func (s *Server) resolveUser(r *http.Request) *auth.User {
 	if s.auth == nil {
 		return nil
 	}
-	// Cookie session wins for the web UI.
-	if c, err := r.Cookie(auth.CookieName()); err == nil && c.Value != "" {
+	// Cookie session wins for the web UI. Browsers may send duplicate cookies
+	// (Secure vs non-Secure) after proxy/header flips — try every value.
+	name := auth.CookieName()
+	for _, c := range r.Cookies() {
+		if c.Name != name || c.Value == "" {
+			continue
+		}
 		if u, err := s.auth.UserByToken(c.Value); err == nil {
 			return u
 		}
@@ -72,6 +77,53 @@ func (s *Server) resolveUser(r *http.Request) *auth.User {
 		}
 	}
 	return nil
+}
+
+func cookieSecure(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// clearSessionCookies expires Secure and non-Secure variants of current and legacy
+// cookie names so a leftover jar cannot keep an old login alive.
+func clearSessionCookies(w http.ResponseWriter) {
+	for _, name := range []string{auth.CookieName(), auth.LegacyCookieName()} {
+		for _, secure := range []bool{true, false} {
+			http.SetCookie(w, &http.Cookie{
+				Name:     name,
+				Value:    "",
+				Path:     "/",
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				Secure:   secure,
+				MaxAge:   -1,
+				Expires:  time.Unix(0, 0),
+			})
+		}
+	}
+}
+
+func (s *Server) invalidateRequestSessions(r *http.Request) {
+	if s.auth == nil {
+		return
+	}
+	for _, c := range r.Cookies() {
+		if (c.Name == auth.CookieName() || c.Name == auth.LegacyCookieName()) && c.Value != "" {
+			s.auth.Logout(c.Value)
+		}
+	}
+}
+
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.CookieName(),
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   cookieSecure(r),
+		MaxAge:   int((30 * 24 * time.Hour) / time.Second),
+		Expires:  time.Now().Add(30 * 24 * time.Hour),
+	})
 }
 
 func allowBasicAuth(path string) bool {
@@ -137,10 +189,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	// Drop previous browser session before issuing a new one (user switch).
-	if c, err := r.Cookie(auth.CookieName()); err == nil && c.Value != "" {
-		s.auth.Logout(c.Value)
-	}
+	// Drop every previous browser session cookie before issuing a new one.
+	s.invalidateRequestSessions(r)
 	token, user, err := s.auth.Login(body.Username, body.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCreds) {
@@ -150,17 +200,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.CookieName(),
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   secure,
-		MaxAge:   int((30 * 24 * time.Hour) / time.Second),
-		Expires:  time.Now().Add(30 * 24 * time.Hour),
-	})
+	clearSessionCookies(w)
+	setSessionCookie(w, r, token)
 	writeJSON(w, user)
 }
 
@@ -169,21 +210,8 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if c, err := r.Cookie(auth.CookieName()); err == nil && s.auth != nil {
-		s.auth.Logout(c.Value)
-	}
-	// Must match Secure/SameSite of the login cookie or the browser keeps the old one on HTTPS.
-	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.CookieName(),
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   secure,
-		MaxAge:   -1,
-		Expires:  time.Unix(0, 0),
-	})
+	s.invalidateRequestSessions(r)
+	clearSessionCookies(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 

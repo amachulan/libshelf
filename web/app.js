@@ -48,10 +48,10 @@ async function loadSession() {
   if (data.auth && data.user) {
     const expected = sessionStorage.getItem("libshelf_login_as");
     if (expected && expected.toLowerCase() !== String(data.user.username || "").toLowerCase()) {
+      // Stale duplicate cookies can keep the previous user; force a clean re-login.
       sessionStorage.removeItem("libshelf_login_as");
       await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
-      alert(`Вход не совпал: ожидали «${expected}», сессия «${data.user.username}». Войдите снова.`);
-      location.href = "/login.html";
+      location.replace("/login.html?switch=1");
       return false;
     }
     sessionStorage.removeItem("libshelf_login_as");
