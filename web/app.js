@@ -796,7 +796,7 @@ async function loadUsers() {
 }
 
 $("logout-btn").addEventListener("click", async () => {
-  await fetch("/api/logout", { method: "POST" });
+  await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
   location.href = "/login.html";
 });
 

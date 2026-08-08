@@ -82,7 +82,7 @@ func allowBasicAuth(path string) bool {
 
 func isPublicPath(path string) bool {
 	switch {
-	case path == "/health", path == "/api/login", path == "/login.html":
+	case path == "/health", path == "/api/login", path == "/login.html", path == "/favicon.ico":
 		return true
 	case path == "/style.css", path == "/app.js", path == "/login.js", path == "/theme.js":
 		return true
@@ -161,12 +161,17 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(auth.CookieName()); err == nil && s.auth != nil {
 		s.auth.Logout(c.Value)
 	}
+	// Must match Secure/SameSite of the login cookie or the browser keeps the old one on HTTPS.
+	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 	http.SetCookie(w, &http.Cookie{
 		Name:     auth.CookieName(),
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
 		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
