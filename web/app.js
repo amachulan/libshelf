@@ -23,6 +23,7 @@ let currentShelfStatus = "";
 let shelfTab = "reading";
 let catalogTab = "authors";
 let catalogLetter = "";
+let catalogLoadSeq = 0;
 let readerBookId = null;
 let readerSaveTimer = null;
 let restorePosition = 0;
@@ -541,9 +542,18 @@ async function openGenre(code) {
   show("results");
 }
 
+function setCatalogLoading(on) {
+  const loading = $("catalog-loading");
+  const list = $("catalog-list");
+  loading.classList.toggle("hidden", !on);
+  list.classList.toggle("hidden", on);
+  if (on) $("catalog-empty").classList.add("hidden");
+}
+
 async function openCatalog(tab, letter) {
   catalogTab = tab || catalogTab || "authors";
   catalogLetter = letter || "";
+  const seq = ++catalogLoadSeq;
   document.querySelectorAll("#catalog-tabs .shelf-pill").forEach((btn) => {
     btn.classList.toggle("is-active", btn.getAttribute("data-cat") === catalogTab);
   });
@@ -552,51 +562,60 @@ async function openCatalog(tab, letter) {
   const emptyEl = $("catalog-empty");
   list.innerHTML = "";
   emptyEl.classList.add("hidden");
+  setCatalogLoading(true);
   show("catalog");
 
-  if (catalogTab === "genres") {
-    $("catalog-letters").classList.add("hidden");
-    history.pushState({ catalog: "genres" }, "", "/?catalog=genres");
-    const res = await api("/api/catalog/genres");
+  try {
+    if (catalogTab === "genres") {
+      $("catalog-letters").classList.add("hidden");
+      history.pushState({ catalog: "genres" }, "", "/?catalog=genres");
+      const res = await api("/api/catalog/genres");
+      if (seq !== catalogLoadSeq) return;
+      if (!res.ok) {
+        alert("Не удалось загрузить жанры");
+        return;
+      }
+      const data = await res.json();
+      if (seq !== catalogLoadSeq) return;
+      const genresList = data.genres || [];
+      emptyEl.classList.toggle("hidden", genresList.length > 0);
+      renderCatalogRows(genresList.map((g) => ({
+        code: g.code,
+        name: g.name || g.code,
+        books: g.books,
+      })), "genres");
+      return;
+    }
+
+    let url = "/api/catalog/" + catalogTab + "?limit=150";
+    if (catalogLetter) url += "&letter=" + encodeURIComponent(catalogLetter);
+    const res = await api(url);
+    if (seq !== catalogLoadSeq) return;
     if (!res.ok) {
-      alert("Не удалось загрузить жанры");
+      alert("Не удалось загрузить каталог");
       return;
     }
     const data = await res.json();
-    const genresList = data.genres || [];
-    emptyEl.classList.toggle("hidden", genresList.length > 0);
-    renderCatalogRows(genresList.map((g) => ({
-      code: g.code,
-      name: g.name || g.code,
-      books: g.books,
-    })), "genres");
-    return;
-  }
+    if (seq !== catalogLoadSeq) return;
+    const letters = data.letters || [];
+    catalogLetter = data.letter || catalogLetter || (letters[0] && letters[0].letter) || "";
+    const qs = new URLSearchParams();
+    qs.set("catalog", catalogTab);
+    if (catalogLetter) qs.set("letter", catalogLetter);
+    history.pushState({ catalog: catalogTab, letter: catalogLetter }, "", "/?" + qs.toString());
 
-  let url = "/api/catalog/" + catalogTab + "?limit=150";
-  if (catalogLetter) url += "&letter=" + encodeURIComponent(catalogLetter);
-  const res = await api(url);
-  if (!res.ok) {
-    alert("Не удалось загрузить каталог");
-    return;
-  }
-  const data = await res.json();
-  const letters = data.letters || [];
-  catalogLetter = data.letter || catalogLetter || (letters[0] && letters[0].letter) || "";
-  const qs = new URLSearchParams();
-  qs.set("catalog", catalogTab);
-  if (catalogLetter) qs.set("letter", catalogLetter);
-  history.pushState({ catalog: catalogTab, letter: catalogLetter }, "", "/?" + qs.toString());
-
-  renderCatalogLetters(letters);
-  if (catalogTab === "authors") {
-    renderCatalogRows(data.authors || [], "authors");
-  } else {
-    renderCatalogRows((data.series || []).map((s) => ({
-      id: s.id,
-      name: s.title,
-      books: s.books,
-    })), "series");
+    renderCatalogLetters(letters);
+    if (catalogTab === "authors") {
+      renderCatalogRows(data.authors || [], "authors");
+    } else {
+      renderCatalogRows((data.series || []).map((s) => ({
+        id: s.id,
+        name: s.title,
+        books: s.books,
+      })), "series");
+    }
+  } finally {
+    if (seq === catalogLoadSeq) setCatalogLoading(false);
   }
 }
 

@@ -447,6 +447,32 @@ main {
   color: var(--card);
 }
 
+.catalog-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 8rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.catalog-spinner {
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: catalog-spin 0.7s linear infinite;
+}
+
+@keyframes catalog-spin {
+  to { transform: rotate(360deg); }
+}
+
 .catalog-list {
   display: flex;
   flex-direction: column;
@@ -455,6 +481,10 @@ main {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
+}
+
+.catalog-list:empty {
+  display: none;
 }
 
 .catalog-row {
