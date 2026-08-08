@@ -25,7 +25,7 @@ Self-hosted веб-каталог для коллекции Flibusta: индек
 
 ## Windows (удобный запуск)
 
-1. Скачайте **`libshelf-windows-amd64.exe`** из [Releases / latest](https://github.com/amachulan/libshelf/releases/tag/latest).
+1. Скачайте [`libshelf-windows-amd64.exe`](https://github.com/amachulan/libshelf/releases/download/latest/libshelf-windows-amd64.exe).
 2. Положите exe куда удобно (можно рядом с книгами) и **запустите двойным щелчком**.
 3. Откроется браузер с мастером настройки:
    - файл каталога `.inpx`
@@ -42,12 +42,12 @@ Self-hosted веб-каталог для коллекции Flibusta: индек
 
 ### 1. Бинарник
 
-С [GitHub Releases](https://github.com/amachulan/libshelf/releases) (pre-release `latest`):
+С [Releases / latest](https://github.com/amachulan/libshelf/releases/tag/latest):
 
 | Файл | Назначение |
 |------|------------|
-| `libshelf-linux-amd64` | сервер, NAS, VPS |
-| `libshelf-windows-amd64.exe` | ПК Windows (см. выше) |
+| [`libshelf-linux-amd64`](https://github.com/amachulan/libshelf/releases/download/latest/libshelf-linux-amd64) | сервер, NAS, VPS |
+| [`libshelf-windows-amd64.exe`](https://github.com/amachulan/libshelf/releases/download/latest/libshelf-windows-amd64.exe) | ПК Windows (см. выше) |
 
 Или сборка из исходников:
 
