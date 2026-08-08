@@ -168,6 +168,34 @@ main {
   overflow-wrap: anywhere;
 }
 .series, .info, .genres { color: var(--muted); }
+.results-sub {
+  margin: -0.4rem 0 1rem;
+  color: var(--muted);
+}
+.inline-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.inline-link:hover { opacity: 0.85; }
+.annotation {
+  margin: 1rem 0 1.25rem;
+  padding: 0.9rem 1rem;
+  background: #f7f1e6;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  line-height: 1.55;
+  max-width: 42rem;
+}
+.annotation p { margin: 0 0 0.7rem; }
+.annotation p:last-child { margin-bottom: 0; }
+.genres { margin-bottom: 0.5rem; }
 .linkish {
   border: 0;
   background: none;

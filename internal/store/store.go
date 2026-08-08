@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -63,9 +64,13 @@ type Book struct {
 
 type BookDetails struct {
 	Book
-	Genres []string `json:"genres"`
-	File   string   `json:"file"`
-	Folder string   `json:"folder"`
+	SeriesID   int64       `json:"seriesId,omitempty"`
+	AuthorList []AuthorRef `json:"authorList"`
+	GenreList  []GenreRef  `json:"genreList"`
+	Genres     []string    `json:"genres"` // legacy: genre codes
+	Annotation string      `json:"annotation,omitempty"`
+	File       string      `json:"file"`
+	Folder     string      `json:"folder"`
 }
 
 type BookFile struct {
@@ -100,7 +105,7 @@ func (s *Store) scanBook(sc interface{ Scan(dest ...any) error }) (Book, error) 
 
 func (s *Store) GetBook(id int64) (*BookDetails, error) {
 	row := s.db.QueryRow(`
-SELECT`+bookColumns+`, b.file, f.name
+SELECT`+bookColumns+`, b.file, f.name, coalesce(b.series_id, 0)
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
 JOIN folders f ON f.id = b.folder_id
@@ -108,11 +113,32 @@ WHERE b.id = ? AND b.deleted = 0 AND b.lang = 'ru'`, id)
 
 	var d BookDetails
 	err := row.Scan(&d.ID, &d.Title, &d.Authors, &d.Series, &d.SeriesNum,
-		&d.Year, &d.Ext, &d.Size, &d.Lang, &d.Rate, &d.File, &d.Folder)
+		&d.Year, &d.Ext, &d.Size, &d.Lang, &d.Rate, &d.File, &d.Folder, &d.SeriesID)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
 	if err != nil {
+		return nil, err
+	}
+
+	arows, err := s.db.Query(`
+SELECT a.id, trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name)
+FROM book_authors ba JOIN authors a ON a.id = ba.author_id
+WHERE ba.book_id = ?
+ORDER BY a.last_name, a.first_name`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer arows.Close()
+	for arows.Next() {
+		var a AuthorRef
+		if err := arows.Scan(&a.ID, &a.Name); err != nil {
+			return nil, err
+		}
+		a.Name = strings.TrimSpace(a.Name)
+		d.AuthorList = append(d.AuthorList, a)
+	}
+	if err := arows.Err(); err != nil {
 		return nil, err
 	}
 

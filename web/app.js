@@ -7,9 +7,12 @@ const grid = $("grid");
 const empty = $("empty");
 const form = $("search-form");
 const qInput = $("q");
+const resultsBack = $("results-back");
+const resultsSub = $("results-sub");
 
 let lastQuery = "";
 let lastBooks = [];
+let listContext = null; // { kind: 'author'|'series', id, name }
 
 async function loadStats() {
   try {
@@ -51,7 +54,6 @@ function placeholderCover() {
   );
 }
 
-/** Compact author line for cards: "Иванов, Петров и ещё 3". */
 function shortAuthors(authors, maxNames = 2) {
   const list = (authors || "")
     .split(",")
@@ -63,13 +65,10 @@ function shortAuthors(authors, maxNames = 2) {
   return `${list.slice(0, maxNames).join(", ")} и ещё ${rest}`;
 }
 
-function renderResults(query, books) {
-  lastQuery = query;
-  lastBooks = books || [];
-  $("results-title").textContent = query ? `Поиск: «${query}»` : "Результаты";
+function renderBookGrid(books) {
   grid.innerHTML = "";
-  empty.classList.toggle("hidden", lastBooks.length > 0);
-  for (const b of lastBooks) {
+  empty.classList.toggle("hidden", books.length > 0);
+  for (const b of books) {
     const el = document.createElement("article");
     el.className = "card";
     el.tabIndex = 0;
@@ -93,12 +92,35 @@ function renderResults(query, books) {
     });
     grid.appendChild(el);
   }
+}
+
+function renderResults(query, books) {
+  listContext = null;
+  lastQuery = query;
+  lastBooks = books || [];
+  resultsBack.classList.add("hidden");
+  resultsSub.classList.add("hidden");
+  $("results-title").textContent = query ? `Поиск: «${query}»` : "Результаты";
+  renderBookGrid(lastBooks);
+  show("results");
+}
+
+function renderNamedList(kind, data) {
+  listContext = { kind, id: data.id, name: data.name };
+  lastBooks = data.books || [];
+  resultsBack.classList.remove("hidden");
+  resultsSub.classList.remove("hidden");
+  const label = kind === "author" ? "Автор" : "Серия";
+  $("results-title").textContent = `${label}: ${data.name}`;
+  resultsSub.textContent = `${formatNum(data.total)} книг`;
+  renderBookGrid(lastBooks);
   show("results");
 }
 
 async function doSearch(query) {
   query = (query || "").trim();
   if (!query) {
+    listContext = null;
     show("home");
     history.replaceState(null, "", "/");
     return;
@@ -113,6 +135,37 @@ async function doSearch(query) {
   renderResults(query, data.books || []);
 }
 
+async function openAuthor(id) {
+  const res = await fetch("/api/author/" + id + "?limit=100");
+  if (!res.ok) {
+    alert("Автор недоступен");
+    return;
+  }
+  const data = await res.json();
+  history.pushState({ author: id }, "", "/?author=" + id);
+  renderNamedList("author", data);
+}
+
+async function openSeries(id) {
+  const res = await fetch("/api/series/" + id + "?limit=100");
+  if (!res.ok) {
+    alert("Серия недоступна");
+    return;
+  }
+  const data = await res.json();
+  history.pushState({ series: id }, "", "/?series=" + id);
+  renderNamedList("series", data);
+}
+
+function linkButton(text, onClick) {
+  const a = document.createElement("button");
+  a.type = "button";
+  a.className = "inline-link";
+  a.textContent = text;
+  a.addEventListener("click", onClick);
+  return a;
+}
+
 async function openBook(id) {
   const res = await fetch("/api/book/" + id);
   if (!res.ok) {
@@ -120,18 +173,55 @@ async function openBook(id) {
     return;
   }
   const b = await res.json();
-  history.pushState({ book: id }, "", "/?book=" + id + (lastQuery ? "&q=" + encodeURIComponent(lastQuery) : ""));
+  const qs = new URLSearchParams();
+  qs.set("book", id);
+  if (lastQuery) qs.set("q", lastQuery);
+  if (listContext?.kind === "author") qs.set("author", listContext.id);
+  if (listContext?.kind === "series") qs.set("series", listContext.id);
+  history.pushState({ book: id }, "", "/?" + qs.toString());
+
   $("book-title").textContent = b.title;
-  $("book-authors").textContent = b.authors || "";
-  $("book-series").textContent = b.series
-    ? (b.seriesNum ? `${b.series} — ${b.seriesNum}` : b.series)
-    : "";
+
+  const authorsEl = $("book-authors");
+  authorsEl.innerHTML = "";
+  const authors = b.authorList || [];
+  if (authors.length === 0 && b.authors) {
+    authorsEl.textContent = b.authors;
+  } else {
+    authors.forEach((a, i) => {
+      if (i) authorsEl.appendChild(document.createTextNode(", "));
+      authorsEl.appendChild(linkButton(a.name, () => openAuthor(a.id)));
+    });
+  }
+
+  const seriesEl = $("book-series");
+  seriesEl.innerHTML = "";
+  if (b.series && b.seriesId) {
+    seriesEl.appendChild(document.createTextNode("Серия: "));
+    const label = b.seriesNum ? `${b.series} — ${b.seriesNum}` : b.series;
+    seriesEl.appendChild(linkButton(label, () => openSeries(b.seriesId)));
+  } else if (b.series) {
+    seriesEl.textContent = b.seriesNum ? `${b.series} — ${b.seriesNum}` : b.series;
+  }
+
   const bits = [];
   if (b.year) bits.push(String(b.year));
   if (b.ext) bits.push(b.ext.toUpperCase());
   if (b.size) bits.push(formatSize(b.size));
   $("book-info").textContent = bits.join(" · ");
-  $("book-genres").textContent = (b.genres || []).join(", ");
+
+  const genres = (b.genreList || []).map((g) => g.name || g.code).filter(Boolean);
+  $("book-genres").textContent = genres.length ? genres.join(" · ") : "";
+
+  const ann = $("book-annotation");
+  if (b.annotation) {
+    ann.innerHTML = b.annotation;
+    ann.classList.remove("hidden");
+  } else {
+    ann.innerHTML = "";
+    ann.classList.add("hidden");
+  }
+
   const cover = $("book-cover");
   cover.src = coverSrc(b.coverUrl, b.id);
   cover.onerror = () => { cover.src = placeholderCover(); };
@@ -139,17 +229,43 @@ async function openBook(id) {
   show("book");
 }
 
-form.addEventListener("submit", (e) => {
-  e.preventDefault();
-  doSearch(qInput.value);
-});
-
-$("back").addEventListener("click", () => {
+function goBackFromBook() {
+  if (listContext) {
+    const { kind, id } = listContext;
+    if (kind === "author") {
+      history.replaceState({ author: id }, "", "/?author=" + id);
+      openAuthor(id);
+      return;
+    }
+    if (kind === "series") {
+      history.replaceState({ series: id }, "", "/?series=" + id);
+      openSeries(id);
+      return;
+    }
+  }
   if (lastQuery) {
     history.replaceState(null, "", "/?q=" + encodeURIComponent(lastQuery));
     renderResults(lastQuery, lastBooks);
   } else {
     history.replaceState(null, "", "/");
+    show("home");
+  }
+}
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  doSearch(qInput.value);
+});
+
+$("back").addEventListener("click", goBackFromBook);
+
+resultsBack.addEventListener("click", () => {
+  if (lastQuery) {
+    history.replaceState(null, "", "/?q=" + encodeURIComponent(lastQuery));
+    doSearch(lastQuery);
+  } else {
+    history.replaceState(null, "", "/");
+    listContext = null;
     show("home");
   }
 });
@@ -161,9 +277,22 @@ window.addEventListener("popstate", () => {
 async function bootFromURL() {
   const params = new URLSearchParams(location.search);
   const book = params.get("book");
+  const author = params.get("author");
+  const series = params.get("series");
   const q = params.get("q") || "";
   qInput.value = q;
+
+  if (author && !book) {
+    await openAuthor(author);
+    return;
+  }
+  if (series && !book) {
+    await openSeries(series);
+    return;
+  }
   if (book) {
+    if (author) listContext = { kind: "author", id: Number(author) };
+    if (series) listContext = { kind: "series", id: Number(series) };
     if (q && lastBooks.length === 0) {
       await doSearch(q);
     }

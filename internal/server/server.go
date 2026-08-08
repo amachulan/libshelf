@@ -16,6 +16,7 @@ import (
 
 	"libshelf/internal/archive"
 	"libshelf/internal/fb2"
+	"libshelf/internal/genres"
 	"libshelf/internal/store"
 	"libshelf/web"
 )
@@ -51,6 +52,8 @@ func (s *Server) ListenAndServe(addr string) error {
 func (s *Server) routes() {
 	s.mux.HandleFunc("/api/search", s.handleSearch)
 	s.mux.HandleFunc("/api/book/", s.handleBook)
+	s.mux.HandleFunc("/api/author/", s.handleAuthor)
+	s.mux.HandleFunc("/api/series/", s.handleSeries)
 	s.mux.HandleFunc("/api/stats", s.handleStats)
 	s.mux.HandleFunc("/cover/", s.handleCover)
 	s.mux.HandleFunc("/download/", s.handleDownload)
@@ -66,7 +69,6 @@ func (s *Server) routes() {
 	fileServer := http.FileServer(http.FS(static))
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && !strings.Contains(strings.TrimPrefix(r.URL.Path, "/"), "/") {
-			// try static file first
 			name := strings.TrimPrefix(r.URL.Path, "/")
 			if f, err := static.Open(name); err == nil {
 				f.Close()
@@ -99,10 +101,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	for i := range books {
-		books[i].CoverURL = "/cover/" + strconv.FormatInt(books[i].ID, 10)
-		books[i].DownloadURL = "/download/" + strconv.FormatInt(books[i].ID, 10)
-	}
+	decorateBooks(books)
 	writeJSON(w, map[string]any{"query": q, "books": books})
 }
 
@@ -123,7 +122,65 @@ func (s *Server) handleBook(w http.ResponseWriter, r *http.Request) {
 	}
 	d.CoverURL = "/cover/" + strconv.FormatInt(d.ID, 10)
 	d.DownloadURL = "/download/" + strconv.FormatInt(d.ID, 10)
+	for _, code := range d.Genres {
+		d.GenreList = append(d.GenreList, store.GenreRef{
+			Code: code,
+			Name: genres.Name(code),
+		})
+	}
+	if ann, err := s.annotation(id); err == nil {
+		d.Annotation = ann
+	}
 	writeJSON(w, d)
+}
+
+func (s *Server) handleAuthor(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(strings.TrimPrefix(r.URL.Path, "/api/author/"))
+	if err != nil {
+		httpError(w, err, 400)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	list, err := s.store.AuthorBooks(id, limit, offset)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpError(w, err, 404)
+			return
+		}
+		httpError(w, err, 500)
+		return
+	}
+	decorateBooks(list.Books)
+	writeJSON(w, list)
+}
+
+func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(strings.TrimPrefix(r.URL.Path, "/api/series/"))
+	if err != nil {
+		httpError(w, err, 400)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	list, err := s.store.SeriesBooks(id, limit, offset)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpError(w, err, 404)
+			return
+		}
+		httpError(w, err, 500)
+		return
+	}
+	decorateBooks(list.Books)
+	writeJSON(w, list)
+}
+
+func decorateBooks(books []store.Book) {
+	for i := range books {
+		books[i].CoverURL = "/cover/" + strconv.FormatInt(books[i].ID, 10)
+		books[i].DownloadURL = "/download/" + strconv.FormatInt(books[i].ID, 10)
+	}
 }
 
 func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +205,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	name := archive.SafeFilename(bf.Title, bf.Ext)
 	w.Header().Set("Content-Type", "application/fb2+xml")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.Header().Set("Content-Disposition", archive.ContentDisposition(name))
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	_, _ = w.Write(data)
 }
@@ -198,6 +255,29 @@ func (s *Server) extractCover(id int64) (*fb2.Cover, error) {
 		return nil, err
 	}
 	return fb2.ExtractCover(bytes.NewReader(data))
+}
+
+func (s *Server) annotation(id int64) (string, error) {
+	cachePath := filepath.Join(s.coverDir, strconv.FormatInt(id, 10)+".ann.html")
+	if data, err := os.ReadFile(cachePath); err == nil {
+		return string(data), nil
+	}
+	bf, err := s.store.BookFile(id)
+	if err != nil {
+		return "", err
+	}
+	raw, err := archive.OpenBook(s.libDir, bf.Folder, bf.File, bf.Ext)
+	if err != nil {
+		return "", err
+	}
+	ann, err := fb2.ExtractAnnotation(bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	s.coverMu.Lock()
+	_ = os.WriteFile(cachePath, []byte(ann), 0o644)
+	s.coverMu.Unlock()
+	return ann, nil
 }
 
 func parseID(s string) (int64, error) {

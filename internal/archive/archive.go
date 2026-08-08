@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/bodgit/sevenzip"
 )
@@ -100,12 +101,12 @@ func normalizeName(name string) string {
 	return strings.ToLower(filepath.Base(name))
 }
 
-// SafeFilename builds a download filename from title.
+// SafeFilename builds a download filename from title (UTF-8, OS-safe).
 func SafeFilename(title, ext string) string {
 	var b bytes.Buffer
 	for _, r := range title {
 		switch {
-		case r < 32:
+		case r < 32 || !unicode.IsPrint(r):
 			continue
 		case strings.ContainsRune(`<>:"/\|?*`, r):
 			b.WriteByte('_')
@@ -117,11 +118,50 @@ func SafeFilename(title, ext string) string {
 	if name == "" {
 		name = "book"
 	}
-	if len(name) > 120 {
-		name = name[:120]
+	runes := []rune(name)
+	if len(runes) > 80 {
+		name = string(runes[:80])
 	}
 	if ext == "" {
 		ext = "fb2"
 	}
 	return name + "." + ext
+}
+
+// asciiFilename is a legacy-compatible fallback for old browsers.
+func asciiFilename(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if r < 128 && r >= 32 && !strings.ContainsRune(`<>:"/\|?*`, r) {
+			b.WriteRune(r)
+		} else if r >= 128 {
+			b.WriteByte('_')
+		}
+	}
+	out := strings.Trim(b.String(), " ._")
+	if out == "" || strings.HasPrefix(out, ".") {
+		out = "book.fb2"
+	}
+	return out
+}
+
+// ContentDisposition returns an RFC 6266 / 5987 header value so Cyrillic
+// titles download with a correct filename in modern browsers.
+func ContentDisposition(filename string) string {
+	ascii := asciiFilename(filename)
+	return fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, ascii, rfc5987(filename))
+}
+
+func rfc5987(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~' {
+			b.WriteByte(c)
+		} else {
+			b.WriteString(fmt.Sprintf("%%%02X", c))
+		}
+	}
+	return b.String()
 }
