@@ -49,7 +49,8 @@ func firstLetter(name string) string {
 	if r == 'Ё' {
 		r = 'Е'
 	}
-	if (r >= 'А' && r <= 'Я') || (r >= 'A' && r <= 'Z') {
+	// Catalog is ru-only for now: Latin initials collapse into "#".
+	if r >= 'А' && r <= 'Я' {
 		return string(r)
 	}
 	return "#"
@@ -61,6 +62,19 @@ func normalizeLetter(letter string) string {
 		return "Е"
 	}
 	return letter
+}
+
+func isCyrillicLetter(letter string) bool {
+	letter = normalizeLetter(letter)
+	return letter >= "А" && letter <= "Я"
+}
+
+// nonCyrillicInitialSQL is true when the first letter is not А–Я (Latin, digits, empty, …).
+func nonCyrillicInitialSQL(column string) string {
+	return `(
+  trim(` + column + `) = ''
+  OR upper(replace(substr(trim(` + column + `),1,1),'Ё','Е')) NOT BETWEEN 'А' AND 'Я'
+)`
 }
 
 func authorHasRUBooksSQL() string {
@@ -105,35 +119,34 @@ GROUP BY 1`)
 }
 
 func sortLetters(merged map[string]int) []LetterCount {
-	var cyr, lat []string
-	hasHash := false
-	for l := range merged {
+	var cyr []string
+	hash := 0
+	for l, n := range merged {
 		switch {
 		case l == "#":
-			hasHash = true
+			hash += n
 		case l >= "А" && l <= "Я":
 			cyr = append(cyr, l)
 		default:
-			lat = append(lat, l)
+			hash += n
 		}
 	}
 	sort.Strings(cyr)
-	sort.Strings(lat)
-	out := make([]LetterCount, 0, len(merged))
+	out := make([]LetterCount, 0, len(cyr)+1)
 	for _, l := range cyr {
 		out = append(out, LetterCount{Letter: l, Count: merged[l]})
 	}
-	for _, l := range lat {
-		out = append(out, LetterCount{Letter: l, Count: merged[l]})
-	}
-	if hasHash {
-		out = append(out, LetterCount{Letter: "#", Count: merged["#"]})
+	if hash > 0 {
+		out = append(out, LetterCount{Letter: "#", Count: hash})
 	}
 	return out
 }
 
 func (s *Store) AuthorsByLetter(letter string, limit, offset int) ([]CatalogPerson, error) {
 	letter = normalizeLetter(letter)
+	if letter != "#" && !isCyrillicLetter(letter) {
+		return nil, nil
+	}
 	if limit <= 0 {
 		limit = 100
 	}
@@ -162,13 +175,7 @@ WHERE ` + authorHasRUBooksSQL() + `
 	)
 	if letter == "#" {
 		rows, err = s.db.Query(q+`
-AND (
-  trim(a.last_name) = ''
-  OR (
-    upper(replace(substr(trim(a.last_name),1,1),'Ё','Е')) NOT BETWEEN 'A' AND 'Z'
-    AND upper(replace(substr(trim(a.last_name),1,1),'Ё','Е')) NOT BETWEEN 'А' AND 'Я'
-  )
-)
+AND `+nonCyrillicInitialSQL("a.last_name")+`
 ORDER BY a.last_name, a.first_name
 LIMIT ? OFFSET ?`, limit, offset)
 	} else {
@@ -222,6 +229,9 @@ GROUP BY 1`)
 
 func (s *Store) SeriesByLetter(letter string, limit, offset int) ([]CatalogSeries, error) {
 	letter = normalizeLetter(letter)
+	if letter != "#" && !isCyrillicLetter(letter) {
+		return nil, nil
+	}
 	if limit <= 0 {
 		limit = 100
 	}
@@ -249,13 +259,7 @@ WHERE EXISTS (
 	)
 	if letter == "#" {
 		rows, err = s.db.Query(base+`
-AND (
-  trim(s.title) = ''
-  OR (
-    upper(replace(substr(trim(s.title),1,1),'Ё','Е')) NOT BETWEEN 'A' AND 'Z'
-    AND upper(replace(substr(trim(s.title),1,1),'Ё','Е')) NOT BETWEEN 'А' AND 'Я'
-  )
-)
+AND `+nonCyrillicInitialSQL("s.title")+`
 ORDER BY s.title
 LIMIT ? OFFSET ?`, limit, offset)
 	} else {
@@ -301,6 +305,9 @@ GROUP BY g.id`)
 		var g CatalogGenre
 		if err := rows.Scan(&g.Code, &g.Books); err != nil {
 			return nil, err
+		}
+		if !genres.Known(g.Code) {
+			continue
 		}
 		g.Name = genres.Name(g.Code)
 		out = append(out, g)

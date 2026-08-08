@@ -18,6 +18,19 @@ func Name(code string) string {
 	return code
 }
 
+// Known reports whether code has a Russian title in the built-in map.
+func Known(code string) bool {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return false
+	}
+	if _, ok := names[code]; ok {
+		return true
+	}
+	_, ok := names[strings.ToLower(code)]
+	return ok
+}
+
 var names = map[string]string{
 	"sf":                    "Фантастика",
 	"sf_history":            "Альтернативная история",
