@@ -27,6 +27,18 @@ func (s *Server) withUser(r *http.Request, u *auth.User) *http.Request {
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.setupMode.Load() {
+			if isSetupPublicPath(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if wantsJSON(r) {
+				http.Error(w, "setup required", http.StatusServiceUnavailable)
+				return
+			}
+			http.Redirect(w, r, "/setup.html", http.StatusFound)
+			return
+		}
 		if s.auth == nil || !s.authRequired {
 			next.ServeHTTP(w, r)
 			return
@@ -142,7 +154,7 @@ func isPublicPath(path string) bool {
 		path == "/favicon.ico", path == "/favicon.svg",
 		path == "/apple-touch-icon.png", path == "/icon-512.png":
 		return true
-	case path == "/style.css", path == "/app.js", path == "/login.js", path == "/theme.js":
+	case path == "/style.css", path == "/app.js", path == "/login.js", path == "/setup.js", path == "/theme.js":
 		return true
 	default:
 		return false

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Настройка — LibShelf</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <script>
+    (function () {
+      var t = localStorage.getItem("libshelf_theme");
+      if (t !== "light" && t !== "dark") {
+        t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="login-body">
+  <main class="login-card setup-card">
+    <button type="button" class="icon-btn" data-theme-toggle title="Тема" aria-label="Тема">☾</button>
+    <h1>LibShelf</h1>
+    <p class="lead">Первый запуск: укажите каталог Flibusta и папку с архивами FB2.</p>
+
+    <form id="setup-form">
+      <label>
+        Файл каталога (.inpx)
+        <div class="field-row">
+          <input id="inpx" class="field" type="text" required placeholder="C:\Books\flibusta.inpx" autocomplete="off">
+          <button type="button" class="top-btn" id="browse-inpx" hidden>Обзор…</button>
+        </div>
+      </label>
+      <label>
+        Папка с архивами книг
+        <div class="field-row">
+          <input id="library_dir" class="field" type="text" required placeholder="C:\Books\flibusta" autocomplete="off">
+          <button type="button" class="top-btn" id="browse-library" hidden>Обзор…</button>
+        </div>
+      </label>
+      <label>
+        Папка данных LibShelf
+        <div class="field-row">
+          <input id="data_dir" class="field" type="text" required autocomplete="off">
+          <button type="button" class="top-btn" id="browse-data" hidden>Обзор…</button>
+        </div>
+      </label>
+      <label>
+        Вход
+        <select id="auth" class="field">
+          <option value="users">С логином (рекомендуется)</option>
+          <option value="none">Без пароля (только этот ПК)</option>
+        </select>
+      </label>
+      <p id="error" class="error hidden"></p>
+      <p id="status" class="setup-status hidden"></p>
+      <div id="credentials" class="setup-creds hidden"></div>
+      <button type="submit" id="submit-btn">Импортировать и открыть</button>
+    </form>
+  </main>
+  <script src="/theme.js"></script>
+  <script src="/setup.js"></script>
+</body>
+</html>

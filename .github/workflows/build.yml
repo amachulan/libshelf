@@ -26,10 +26,19 @@ jobs:
             -o libshelf-linux-amd64 ./cmd/libshelf
           ./libshelf-linux-amd64 version | grep -q "${GITHUB_SHA}"
 
+      - name: Build windows amd64
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath \
+            -ldflags="-s -w -X libshelf/internal/version.Commit=${GITHUB_SHA}" \
+            -o libshelf-windows-amd64.exe ./cmd/libshelf
+
       - uses: actions/upload-artifact@v4
         with:
-          name: libshelf-linux-amd64
-          path: libshelf-linux-amd64
+          name: libshelf-binaries
+          path: |
+            libshelf-linux-amd64
+            libshelf-windows-amd64.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -37,12 +46,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          NOTES="commit ${GITHUB_SHA}"
+          NOTES="$(cat <<EOF
+          commit ${GITHUB_SHA}
+
+          ### Downloads
+          - \`libshelf-linux-amd64\` — Linux server / VPS
+          - \`libshelf-windows-amd64.exe\` — Windows: double-click to start, setup opens in the browser
+
+          Windows: keep the console window open while using LibShelf.
+          EOF
+          )"
           if gh release view latest >/dev/null 2>&1; then
-            gh release upload latest libshelf-linux-amd64 --clobber
+            gh release upload latest \
+              libshelf-linux-amd64 \
+              libshelf-windows-amd64.exe \
+              --clobber
             gh release edit latest --notes "$NOTES" --title "Latest (${GITHUB_SHA::7})"
           else
-            gh release create latest libshelf-linux-amd64 \
+            gh release create latest \
+              libshelf-linux-amd64 \
+              libshelf-windows-amd64.exe \
               --title "Latest (${GITHUB_SHA::7})" \
               --notes "$NOTES" \
               --prerelease

@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
+	"libshelf/internal/appconfig"
 	"libshelf/internal/auth"
 	"libshelf/internal/server"
 	"libshelf/internal/store"
@@ -17,10 +21,12 @@ import (
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
+		runStart(nil)
+		return
 	}
 	switch os.Args[1] {
+	case "start":
+		runStart(os.Args[2:])
 	case "import":
 		runImport(os.Args[2:])
 	case "serve":
@@ -42,12 +48,143 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `libshelf — personal Flibusta catalog
 
 Usage:
-  libshelf import --inpx FILE --library-dir DIR --data-dir DIR [--replace]
-  libshelf serve  --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none]
-  libshelf user add --data-dir DIR --username NAME --password PASS [--role admin|reader]
+  libshelf                 same as start (double-click friendly)
+  libshelf start           [--config FILE] [--addr HOST:PORT] [--no-browser]
+  libshelf import          --inpx FILE --library-dir DIR --data-dir DIR [--replace]
+  libshelf serve           --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
+  libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
   libshelf version
 
+Windows: download libshelf-windows-amd64.exe, double-click it, finish setup in the browser.
+
 `)
+}
+
+func runStart(args []string) {
+	fs := flag.NewFlagSet("start", flag.ExitOnError)
+	configPath := fs.String("config", "", "path to libshelf.json (default: next to the executable)")
+	addrFlag := fs.String("addr", "", "override listen address")
+	noBrowser := fs.Bool("no-browser", false, "do not open the browser")
+	_ = fs.Parse(args)
+
+	path := *configPath
+	if path == "" {
+		path = appconfig.DefaultPath()
+	}
+	cfg, err := appconfig.Load(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if *addrFlag != "" {
+		cfg.Addr = *addrFlag
+	}
+	if *noBrowser {
+		cfg.OpenBrowser = false
+	}
+
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		log.Fatal(err)
+	}
+	coverDir := filepath.Join(cfg.DataDir, "covers")
+	if err := os.MkdirAll(coverDir, 0o755); err != nil {
+		log.Fatal(err)
+	}
+
+	dbPath := filepath.Join(cfg.DataDir, "libshelf.db")
+	st, err := store.Open(dbPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer st.Close()
+
+	n, err := st.TotalBookCount()
+	if err != nil {
+		log.Fatal(err)
+	}
+	needSetup := n == 0
+
+	var auther *auth.Auth
+	authRequired := false
+	if !needSetup {
+		mode := strings.ToLower(strings.TrimSpace(cfg.Auth))
+		if mode == "" {
+			mode = "users"
+		}
+		if mode != "users" && mode != "none" {
+			log.Fatal("config auth must be users or none")
+		}
+		authRequired = mode == "users"
+		if authRequired {
+			auther, err = auth.Open(filepath.Join(cfg.DataDir, "users.db"))
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer auther.Close()
+			user, pass := auth.EnvBootstrap()
+			u, generated, err := auther.BootstrapAdmin(user, pass)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if u != nil {
+				if generated != "" {
+					log.Printf("created bootstrap admin %q password=%s (change it after login)", u.Username, generated)
+				} else {
+					log.Printf("created bootstrap admin %q from env", u.Username)
+				}
+			}
+		}
+		if cfg.LibraryDir == "" {
+			log.Fatal("library_dir is empty; edit libshelf.json or delete the database to run setup again")
+		}
+	}
+
+	// Persist defaults so the next double-click finds the same paths.
+	_ = cfg.Save(path)
+
+	srv := server.New(server.Options{
+		Store:        st,
+		Auth:         auther,
+		AuthRequired: authRequired,
+		LibDir:       cfg.LibraryDir,
+		CoverDir:     coverDir,
+		SetupMode:    needSetup,
+		ConfigPath:   path,
+		Config:       cfg,
+	})
+
+	url := "http://" + cfg.Addr + "/"
+	if needSetup {
+		url = "http://" + cfg.Addr + "/setup.html"
+		log.Printf("first run: open setup wizard at %s", url)
+		log.Printf("keep this window open while LibShelf is running")
+	} else {
+		log.Printf("listening on %s (%d books, auth=%s, commit=%s)", url, n, cfg.Auth, version.Short())
+		log.Printf("keep this window open while LibShelf is running")
+	}
+
+	if cfg.OpenBrowser {
+		go func() {
+			time.Sleep(350 * time.Millisecond)
+			if err := openBrowser(url); err != nil {
+				log.Printf("could not open browser: %v (open %s manually)", err, url)
+			}
+		}()
+	}
+
+	if err := srv.ListenAndServe(cfg.Addr); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func openBrowser(url string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		return exec.Command("open", url).Start()
+	default:
+		return exec.Command("xdg-open", url).Start()
+	}
 }
 
 func runImport(args []string) {
@@ -84,6 +221,7 @@ func runServe(args []string) {
 	dataDir := fs.String("data-dir", "", "directory for SQLite database and cover cache")
 	addr := fs.String("addr", "127.0.0.1:12380", "listen address")
 	authMode := fs.String("auth", "users", "auth mode: users (login required) or none")
+	open := fs.Bool("open", false, "open the library in a browser")
 	_ = fs.Parse(args)
 	if *libDir == "" || *dataDir == "" {
 		fs.Usage()
@@ -105,7 +243,7 @@ func runServe(args []string) {
 		log.Fatal(err)
 	}
 	if n == 0 {
-		log.Fatal("database is empty; run: libshelf import ...")
+		log.Fatal("database is empty; run: libshelf start   or   libshelf import ...")
 	}
 	coverDir := filepath.Join(*dataDir, "covers")
 	if err := os.MkdirAll(coverDir, 0o755); err != nil {
@@ -141,7 +279,16 @@ func runServe(args []string) {
 		LibDir:       *libDir,
 		CoverDir:     coverDir,
 	})
-	log.Printf("listening on http://%s (%d books, auth=%s, commit=%s)", *addr, n, mode, version.Short())
+	url := "http://" + *addr + "/"
+	log.Printf("listening on %s (%d books, auth=%s, commit=%s)", url, n, mode, version.Short())
+	if *open {
+		go func() {
+			time.Sleep(350 * time.Millisecond)
+			if err := openBrowser(url); err != nil {
+				log.Printf("could not open browser: %v", err)
+			}
+		}()
+	}
 	if err := srv.ListenAndServe(*addr); err != nil {
 		log.Fatal(err)
 	}

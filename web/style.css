@@ -705,22 +705,17 @@ body.reading-mode {
   background: var(--bg);
 }
 
-/* Lock document scroll in page mode — free panning breaks page alignment. */
+/* Lock document scroll in page mode — nothing native should pan/scroll. */
 html.reader-pages-lock,
 html.reader-pages-lock body {
   overflow: hidden !important;
   overscroll-behavior: none;
+  touch-action: none;
   height: 100%;
   width: 100%;
 }
 
-/* position:fixed only on touch — on desktop it made the window scroll oddly. */
-html.reader-pages-lock.reader-pages-touch,
-html.reader-pages-lock.reader-pages-touch body {
-  touch-action: none;
-}
-
-html.reader-pages-lock.reader-pages-touch body {
+html.reader-pages-lock body {
   position: fixed;
   inset: 0;
 }
@@ -730,8 +725,7 @@ body.reading-mode.reader-pages {
 }
 
 body.reader-pages .reader {
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -754,11 +748,12 @@ body.reader-pages .reader-stage {
   touch-action: none;
 }
 
+/* Absolute fill so clientHeight is real (%, flex % was sometimes ~0). */
 body.reader-pages .reader-viewport {
-  position: relative;
+  position: absolute;
+  inset: 0;
   min-width: 0;
   min-height: 0;
-  height: 100%;
   overflow: hidden;
   display: flex;
   justify-content: center;
@@ -893,6 +888,48 @@ body.reader-pages .reader-content .fb2-img {
   box-shadow: var(--shadow);
   padding: 1.5rem;
   position: relative;
+}
+
+.setup-card {
+  width: min(100%, 520px);
+}
+.setup-card .field-row {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  margin-top: 0.35rem;
+}
+.setup-card .field-row .field {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+}
+.setup-card .field-row .top-btn {
+  flex: 0 0 auto;
+}
+.setup-card select.field {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+.setup-status {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0;
+}
+.setup-creds {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.setup-creds .muted { color: var(--muted); font-size: 0.85rem; }
+.setup-creds code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.9em;
 }
 
 .login-card .icon-btn {

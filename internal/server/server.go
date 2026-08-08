@@ -14,8 +14,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"libshelf/internal/appconfig"
 	"libshelf/internal/archive"
 	"libshelf/internal/auth"
 	"libshelf/internal/fb2"
@@ -33,7 +35,12 @@ type Server struct {
 	coverDir     string
 	assetVer     string
 	mux          *http.ServeMux
-	coverMu      sync.Mutex
+	coverMu    sync.Mutex
+	mu         sync.Mutex
+	setupMode  atomic.Bool
+	configPath string
+	config     appconfig.Config
+	setup      *setupRuntime
 }
 
 type Options struct {
@@ -42,6 +49,9 @@ type Options struct {
 	AuthRequired bool
 	LibDir       string
 	CoverDir     string
+	SetupMode    bool
+	ConfigPath   string
+	Config       appconfig.Config
 }
 
 func New(opts Options) *Server {
@@ -53,6 +63,12 @@ func New(opts Options) *Server {
 		coverDir:     opts.CoverDir,
 		assetVer:     staticAssetVersion(web.FS),
 		mux:          http.NewServeMux(),
+		configPath:   opts.ConfigPath,
+		config:       opts.Config,
+	}
+	s.setupMode.Store(opts.SetupMode)
+	if opts.SetupMode {
+		s.initSetupRuntime()
 	}
 	s.routes()
 	return s
@@ -61,8 +77,8 @@ func New(opts Options) *Server {
 func staticAssetVersion(fsys fs.FS) string {
 	h := sha256.New()
 	for _, name := range []string{
-		"index.html", "login.html",
-		"style.css", "app.js", "login.js", "theme.js",
+		"index.html", "login.html", "setup.html",
+		"style.css", "app.js", "login.js", "setup.js", "theme.js",
 		"favicon.svg",
 	} {
 		b, err := fs.ReadFile(fsys, name)
@@ -88,6 +104,8 @@ func (s *Server) ListenAndServe(addr string) error {
 }
 
 func (s *Server) routes() {
+	s.mux.HandleFunc("/api/setup", s.handleSetupAPI)
+	s.mux.HandleFunc("/api/setup/", s.handleSetupAPI)
 	s.mux.HandleFunc("/api/login", s.handleLogin)
 	s.mux.HandleFunc("/api/logout", s.handleLogout)
 	s.mux.HandleFunc("/api/me", s.handleMe)
@@ -131,7 +149,18 @@ func (s *Server) routes() {
 		path := r.URL.Path
 		switch path {
 		case "/", "/index.html":
+			if s.setupMode.Load() {
+				s.serveHTML(w, static, "setup.html")
+				return
+			}
 			s.serveHTML(w, static, "index.html")
+			return
+		case "/setup.html":
+			if !s.setupMode.Load() {
+				http.Redirect(w, r, "/", http.StatusFound)
+				return
+			}
+			s.serveHTML(w, static, "setup.html")
 			return
 		case "/login.html":
 			s.serveHTML(w, static, "login.html")
@@ -167,7 +196,7 @@ func (s *Server) serveHTML(w http.ResponseWriter, fsys fs.FS, name string) {
 	}
 	v := s.assetVer
 	html := string(b)
-	for _, asset := range []string{"/style.css", "/app.js", "/login.js", "/theme.js", "/favicon.svg", "/apple-touch-icon.png"} {
+	for _, asset := range []string{"/style.css", "/app.js", "/login.js", "/setup.js", "/theme.js", "/favicon.svg", "/apple-touch-icon.png"} {
 		html = strings.ReplaceAll(html, `"`+asset+`"`, `"`+asset+`?v=`+v+`"`)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

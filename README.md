@@ -9,7 +9,7 @@ Self-hosted веб-каталог для коллекции Flibusta: индек
 - поиск сразу по **автору + названию + серии** (например `кинг сияние`)
 - по умолчанию в выдаче только книги с **`lang = ru`**
 - карточка книги, обложка из FB2, скачивание FB2
-- **читалка** FB2 в браузере (скролл, оглавление, прогресс)
+- **читалка** FB2 в браузере (страницы или лента, прогресс)
 - личные списки **Читаю / Прочитано / Хочу**
 - **каталог**: авторы и серии по буквам, жанры
 - **OPDS** для ридеров (`/opds`)
@@ -23,11 +23,33 @@ Self-hosted веб-каталог для коллекции Flibusta: индек
 
 Пути ниже — примеры; подставьте свои.
 
-## Быстрый старт
+## Windows (удобный запуск)
+
+1. Скачайте **`libshelf-windows-amd64.exe`** из [Releases / latest](https://github.com/amachulan/libshelf/releases/tag/latest).
+2. Положите exe куда удобно (можно рядом с книгами) и **запустите двойным щелчком**.
+3. Откроется браузер с мастером настройки:
+   - файл каталога `.inpx`
+   - папка с архивами FB2
+   - папка данных (по умолчанию `data` рядом с exe)
+4. Дождитесь импорта. Если включён вход, на экране покажут логин/пароль админа — сохраните их.
+5. Пока пользуетесь библиотекой, **не закрывайте** чёрное окно консоли (это и есть LibShelf).
+
+Повторный запуск — снова двойной щелчок: настройки читаются из `libshelf.json` рядом с exe, браузер откроется сам.
+
+Остановить: закрыть окно консоли или Ctrl+C.
+
+## Быстрый старт (Linux / сервер / из исходников)
 
 ### 1. Бинарник
 
-С [GitHub Releases](https://github.com/amachulan/libshelf/releases) (pre-release `latest`) или сборка из исходников:
+С [GitHub Releases](https://github.com/amachulan/libshelf/releases) (pre-release `latest`):
+
+| Файл | Назначение |
+|------|------------|
+| `libshelf-linux-amd64` | сервер, NAS, VPS |
+| `libshelf-windows-amd64.exe` | ПК Windows (см. выше) |
+
+Или сборка из исходников:
 
 ```sh
 git clone https://github.com/amachulan/libshelf.git
@@ -35,13 +57,25 @@ cd libshelf
 CGO_ENABLED=0 go build -o libshelf ./cmd/libshelf
 ```
 
-Для Linux amd64 без CGO:
+Кросс-сборка:
 
 ```sh
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o libshelf ./cmd/libshelf
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o libshelf-linux-amd64 ./cmd/libshelf
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o libshelf-windows-amd64.exe ./cmd/libshelf
 ```
 
-### 2. Импорт каталога
+### 2. Режим start (мастер в браузере)
+
+На любой ОС можно так же, как на Windows:
+
+```sh
+./libshelf start
+# или просто: ./libshelf
+```
+
+При пустой базе откроется `/setup.html`. Конфиг пишется в `libshelf.json` рядом с бинарником.
+
+### 3. Импорт из CLI
 
 ```sh
 ./libshelf import \
@@ -53,17 +87,18 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o libshelf ./cmd/libshelf
 Повторный полный импорт (пересоздать индекс книг): добавьте `--replace`.  
 База пользователей (`users.db`: аккаунты, полки, прогресс) при `--replace` **не** трогается.
 
-### 3. Запуск сервера
+### 4. Запуск сервера (без мастера)
 
 ```sh
 ./libshelf serve \
   --addr 127.0.0.1:12380 \
   --library-dir /path/to/fb2/archives \
   --data-dir /path/to/libshelf-data \
-  --auth users
+  --auth users \
+  --open
 ```
 
-Откройте в браузере `http://127.0.0.1:12380`.
+Откройте в браузере `http://127.0.0.1:12380` (или доверьте `--open`).
 
 Проверка:
 
@@ -141,7 +176,7 @@ server {
 
 ## Обновление с GitHub Releases
 
-Каждый push в `master` собирает linux amd64 в Actions и обновляет pre-release [`latest`](https://github.com/amachulan/libshelf/releases/tag/latest).
+Каждый push в `master` собирает **linux amd64** и **windows amd64** в Actions и обновляет pre-release [`latest`](https://github.com/amachulan/libshelf/releases/tag/latest).
 
 Вспомогательный скрипт `scripts/deploy.sh`:
 
@@ -166,10 +201,25 @@ sudo /opt/libshelf/deploy.sh
 ## CLI
 
 ```text
-libshelf import  --inpx FILE --library-dir DIR --data-dir DIR [--replace]
-libshelf serve   --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none]
-libshelf user add --data-dir DIR --username NAME --password PASS [--role admin|reader]
+libshelf                 (= start)
+libshelf start           [--config FILE] [--addr HOST:PORT] [--no-browser]
+libshelf import          --inpx FILE --library-dir DIR --data-dir DIR [--replace]
+libshelf serve           --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
+libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
 libshelf version
+```
+
+`libshelf.json` (рядом с exe при `start`):
+
+```json
+{
+  "addr": "127.0.0.1:12380",
+  "library_dir": "C:\\\\Books\\\\flibusta",
+  "data_dir": "C:\\\\LibShelf\\\\data",
+  "inpx": "C:\\\\Books\\\\flibusta.inpx",
+  "auth": "users",
+  "open_browser": true
+}
 ```
 
 ## API (кратко)
