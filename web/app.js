@@ -29,6 +29,7 @@ let readerSaveTimer = null;
 let restorePosition = 0;
 let fontScale = Number(localStorage.getItem("libshelf_font") || "1");
 let readMode = localStorage.getItem("libshelf_read_mode") === "pages" ? "pages" : "scroll";
+let readerPageIndex = 0;
 
 async function api(url, opts = {}) {
   const res = await fetch(url, { ...opts, credentials: "same-origin" });
@@ -383,14 +384,38 @@ function readerContentEl() {
   return $("reader-content");
 }
 
+function readerViewportEl() {
+  return document.querySelector(".reader-viewport");
+}
+
 function pageStride() {
+  const vp = readerViewportEl();
+  return Math.max(1, vp ? vp.clientHeight : window.innerHeight);
+}
+
+function maxReaderPageIndex() {
   const el = readerContentEl();
-  if (!el) return 1;
-  return Math.max(1, el.clientHeight);
+  if (!el) return 0;
+  const stride = pageStride();
+  return Math.max(0, Math.ceil(el.scrollHeight / stride) - 1);
+}
+
+function applyPageTransform(smooth) {
+  const el = readerContentEl();
+  if (!el) return;
+  const y = -readerPageIndex * pageStride();
+  el.style.transition = smooth ? "transform 0.2s ease" : "none";
+  el.style.transform = readMode === "pages" ? `translate3d(0, ${y}px, 0)` : "";
+}
+
+function lockPageScroll(on) {
+  document.documentElement.classList.toggle("reader-pages-lock", !!on);
 }
 
 function applyReadMode() {
+  const paging = readMode === "pages" && document.body.classList.contains("reading-mode");
   document.body.classList.toggle("reader-pages", readMode === "pages");
+  lockPageScroll(paging);
   const btn = $("reader-mode-btn");
   if (btn) {
     btn.textContent = readMode === "pages" ? "Лента" : "Страницы";
@@ -398,16 +423,19 @@ function applyReadMode() {
   }
   localStorage.setItem("libshelf_read_mode", readMode);
   const el = readerContentEl();
-  if (el) el.style.columnWidth = "";
+  if (el) {
+    el.style.columnWidth = "";
+    if (readMode !== "pages") {
+      el.style.transform = "";
+      el.style.transition = "";
+    }
+  }
 }
 
 function readerPosition() {
   if (readMode === "pages") {
-    const el = readerContentEl();
-    if (!el) return 0;
-    const max = el.scrollHeight - el.clientHeight;
-    if (max <= 0) return 0;
-    return Math.min(1, Math.max(0, el.scrollTop / max));
+    const max = maxReaderPageIndex();
+    return max <= 0 ? 0 : Math.min(1, Math.max(0, readerPageIndex / max));
   }
   const el = document.documentElement;
   const max = el.scrollHeight - el.clientHeight;
@@ -418,15 +446,9 @@ function readerPosition() {
 function restoreReaderPosition(pos) {
   const p = Math.min(1, Math.max(0, Number(pos) || 0));
   if (readMode === "pages") {
-    const el = readerContentEl();
-    if (!el) return;
-    const max = el.scrollHeight - el.clientHeight;
-    if (max <= 0) {
-      el.scrollTop = 0;
-      return;
-    }
-    const stride = pageStride();
-    el.scrollTop = Math.round((p * max) / stride) * stride;
+    const max = maxReaderPageIndex();
+    readerPageIndex = max <= 0 ? 0 : Math.round(p * max);
+    applyPageTransform(false);
     return;
   }
   const el = document.documentElement;
@@ -437,10 +459,13 @@ function restoreReaderPosition(pos) {
 function scrollToReaderTarget(target) {
   if (!target) return;
   if (readMode === "pages") {
-    const el = readerContentEl();
-    const top = target.offsetTop - el.clientHeight * 0.05;
     const stride = pageStride();
-    el.scrollTo({ top: Math.max(0, Math.floor(top / stride) * stride), behavior: "smooth" });
+    readerPageIndex = Math.min(
+      maxReaderPageIndex(),
+      Math.max(0, Math.floor(target.offsetTop / stride)),
+    );
+    applyPageTransform(true);
+    scheduleSaveProgress();
     return;
   }
   target.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -448,11 +473,10 @@ function scrollToReaderTarget(target) {
 
 function flipReaderPage(dir) {
   if (readMode !== "pages") return;
-  const el = readerContentEl();
-  const stride = pageStride();
-  const max = Math.max(0, el.scrollHeight - el.clientHeight);
-  const next = Math.min(max, Math.max(0, Math.round(el.scrollTop / stride) * stride + dir * stride));
-  el.scrollTo({ top: next, behavior: "smooth" });
+  const next = Math.min(maxReaderPageIndex(), Math.max(0, readerPageIndex + dir));
+  if (next === readerPageIndex) return;
+  readerPageIndex = next;
+  applyPageTransform(true);
   scheduleSaveProgress();
 }
 
@@ -498,7 +522,6 @@ async function openReader(id) {
   $("reader-title").textContent = data.title || "";
   $("reader-content").innerHTML = data.html || "";
   applyFontScale({ keepPosition: false });
-  applyReadMode();
 
   const toc = $("reader-toc");
   toc.innerHTML = "";
@@ -525,6 +548,7 @@ async function openReader(id) {
   $("reader-toc-btn").classList.toggle("hidden", chapters.length === 0);
 
   show("reader");
+  applyReadMode();
   requestAnimationFrame(() => {
     requestAnimationFrame(() => restoreReaderPosition(restorePosition));
   });
@@ -533,8 +557,15 @@ async function openReader(id) {
 function closeReader() {
   saveReaderProgress();
   readerBookId = null;
+  readerPageIndex = 0;
   $("reader-toc").classList.add("hidden");
   document.body.classList.remove("reader-pages");
+  lockPageScroll(false);
+  const el = readerContentEl();
+  if (el) {
+    el.style.transform = "";
+    el.style.transition = "";
+  }
   if (currentBookId) {
     openBook(currentBookId);
   } else {
@@ -809,29 +840,38 @@ window.addEventListener("scroll", () => {
   scheduleSaveProgress();
 }, { passive: true });
 
-$("reader-content").addEventListener("wheel", (e) => {
-  if (!document.body.classList.contains("reading-mode") || readMode !== "pages") return;
+function pageModeActive() {
+  return document.body.classList.contains("reading-mode") && readMode === "pages";
+}
+
+readerEl.addEventListener("wheel", (e) => {
+  if (!pageModeActive()) return;
   e.preventDefault();
   if (e.deltaY > 4) flipReaderPage(1);
   else if (e.deltaY < -4) flipReaderPage(-1);
 }, { passive: false });
 
 let readerTouchStartY = 0;
-$("reader-content").addEventListener("touchstart", (e) => {
-  if (readMode !== "pages") return;
+readerEl.addEventListener("touchstart", (e) => {
+  if (!pageModeActive()) return;
   readerTouchStartY = e.changedTouches[0]?.clientY || 0;
-}, { passive: true });
-$("reader-content").addEventListener("touchmove", (e) => {
-  if (!document.body.classList.contains("reading-mode") || readMode !== "pages") return;
+}, { passive: true, capture: true });
+readerEl.addEventListener("touchmove", (e) => {
+  if (!pageModeActive()) return;
   e.preventDefault();
-}, { passive: false });
-$("reader-content").addEventListener("touchend", (e) => {
-  if (!document.body.classList.contains("reading-mode") || readMode !== "pages") return;
+}, { passive: false, capture: true });
+readerEl.addEventListener("touchend", (e) => {
+  if (!pageModeActive()) return;
+  // Ignore swipes that started on toolbar controls.
+  const startTarget = e.target;
+  if (startTarget && startTarget.closest && startTarget.closest(".reader-bar, .reader-toc, .reader-page-nav")) {
+    return;
+  }
   const y = e.changedTouches[0]?.clientY || 0;
   const dy = readerTouchStartY - y;
   if (Math.abs(dy) < 40) return;
   flipReaderPage(dy > 0 ? 1 : -1);
-}, { passive: true });
+}, { passive: true, capture: true });
 
 $("reader-back").addEventListener("click", closeReader);
 $("reader-toc-btn").addEventListener("click", () => {
