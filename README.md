@@ -16,14 +16,13 @@
 На сервере один раз:
 
 ```sh
-# нужен GitHub CLI, залогиненный с доступом к репо
-gh auth login
-
 sudo mkdir -p /opt/libshelf
 sudo curl -fsSL -o /opt/libshelf/deploy.sh \
   https://raw.githubusercontent.com/amachulan/libshelf/master/scripts/deploy.sh
 sudo chmod +x /opt/libshelf/deploy.sh
 ```
+
+`deploy.sh` качает бинарник через **curl** (gh не обязателен).
 
 Дальше после каждого `git push` в master:
 

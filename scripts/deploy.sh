@@ -9,21 +9,44 @@ DATA_DIR="${LIBSHELF_DATA:-/opt/libshelf/data}"
 LIB_DIR="${LIBSHELF_LIB:-/mnt/share/Книги/fb2.Flibusta.Net}"
 ADDR="${LIBSHELF_ADDR:-127.0.0.1:12380}"
 SCREEN_NAME="${LIBSHELF_SCREEN:-libshelf}"
-
-if ! command -v gh >/dev/null 2>&1; then
-  echo "gh CLI required: https://cli.github.com/" >&2
-  exit 1
-fi
+ASSET="libshelf-linux-amd64"
 
 TMP="$(mktemp -d)"
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
 
-echo "Downloading $REPO @ latest ..."
-gh release download latest -R "$REPO" -p 'libshelf-linux-amd64' -D "$TMP"
+download_latest() {
+  local out="$1"
+  local url="https://github.com/${REPO}/releases/download/latest/${ASSET}"
+
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    echo "Downloading via gh ($REPO @ latest) ..."
+    gh release download latest -R "$REPO" -p "$ASSET" -D "$TMP"
+    mv "$TMP/$ASSET" "$out"
+    return
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    echo "Downloading via curl: $url"
+    curl -fL --retry 3 -o "$out" "$url"
+    return
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    echo "Downloading via wget: $url"
+    wget -O "$out" "$url"
+    return
+  fi
+
+  echo "Need curl, wget, or authenticated gh CLI" >&2
+  exit 1
+}
+
+download_latest "$TMP/$ASSET"
+chmod +x "$TMP/$ASSET"
 
 install -d "$(dirname "$BIN")"
-install -m 755 "$TMP/libshelf-linux-amd64" "${BIN}.new"
+install -m 755 "$TMP/$ASSET" "${BIN}.new"
 
 echo "Stopping old process (if any) ..."
 if screen -list 2>/dev/null | grep -q "[.]${SCREEN_NAME}[[:space:]]"; then
