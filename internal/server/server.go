@@ -2,6 +2,8 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -28,6 +30,7 @@ type Server struct {
 	authRequired bool
 	libDir       string
 	coverDir     string
+	assetVer     string
 	mux          *http.ServeMux
 	coverMu      sync.Mutex
 }
@@ -47,10 +50,26 @@ func New(opts Options) *Server {
 		authRequired: opts.AuthRequired,
 		libDir:       opts.LibDir,
 		coverDir:     opts.CoverDir,
+		assetVer:     staticAssetVersion(web.FS),
 		mux:          http.NewServeMux(),
 	}
 	s.routes()
 	return s
+}
+
+func staticAssetVersion(fsys fs.FS) string {
+	h := sha256.New()
+	for _, name := range []string{
+		"index.html", "login.html",
+		"style.css", "app.js", "login.js", "theme.js",
+	} {
+		b, err := fs.ReadFile(fsys, name)
+		if err != nil {
+			continue
+		}
+		_, _ = h.Write(b)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
 func (s *Server) ListenAndServe(addr string) error {
@@ -86,20 +105,51 @@ func (s *Server) routes() {
 	}
 	fileServer := http.FileServer(http.FS(static))
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" && !strings.Contains(strings.TrimPrefix(r.URL.Path, "/"), "/") {
-			name := strings.TrimPrefix(r.URL.Path, "/")
+		path := r.URL.Path
+		switch path {
+		case "/", "/index.html":
+			s.serveHTML(w, static, "index.html")
+			return
+		case "/login.html":
+			s.serveHTML(w, static, "login.html")
+			return
+		}
+		if path != "/" && !strings.Contains(strings.TrimPrefix(path, "/"), "/") {
+			name := strings.TrimPrefix(path, "/")
 			if f, err := static.Open(name); err == nil {
 				f.Close()
+				// Fingerprinted URLs (?v=...) can be cached hard; bare ones revalidate.
+				if r.URL.RawQuery != "" {
+					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				} else {
+					w.Header().Set("Cache-Control", "no-cache")
+				}
 				fileServer.ServeHTTP(w, r)
 				return
 			}
 		}
-		if r.URL.Path == "/" || !strings.Contains(r.URL.Path, ".") {
-			http.ServeFileFS(w, r, static, "index.html")
+		if path == "/" || !strings.Contains(path, ".") {
+			s.serveHTML(w, static, "index.html")
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) serveHTML(w http.ResponseWriter, fsys fs.FS, name string) {
+	b, err := fs.ReadFile(fsys, name)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	v := s.assetVer
+	html := string(b)
+	for _, asset := range []string{"/style.css", "/app.js", "/login.js", "/theme.js"} {
+		html = strings.ReplaceAll(html, `"`+asset+`"`, `"`+asset+`?v=`+v+`"`)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write([]byte(html))
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {

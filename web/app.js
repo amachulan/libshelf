@@ -36,14 +36,15 @@ async function loadSession() {
   if (data.auth && data.user) {
     currentUser = data.user;
     $("user-box").classList.remove("hidden");
-    $("user-label").textContent = `${data.user.username} · ${roleLabel(data.user.role)}`;
+    $("user-label").textContent = roleLabel(data.user.role);
+    $("user-label").title = data.user.username;
     $("users-btn").classList.toggle("hidden", data.user.role !== "admin");
   }
   return true;
 }
 
 function roleLabel(role) {
-  return role === "admin" ? "админ" : "читатель";
+  return role === "admin" ? "Администратор" : "Читатель";
 }
 
 async function loadStats() {
@@ -72,6 +73,9 @@ function show(panel) {
   results.classList.toggle("hidden", panel !== "results");
   bookPanel.classList.toggle("hidden", panel !== "book");
   usersPanel.classList.toggle("hidden", panel !== "users");
+  const onUsers = panel === "users";
+  $("nav-home").classList.toggle("is-active", !onUsers);
+  $("users-btn").classList.toggle("is-active", onUsers);
 }
 
 function coverSrc(url, id) {
@@ -380,6 +384,15 @@ async function loadUsers() {
 $("logout-btn").addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST" });
   location.href = "/login.html";
+});
+
+$("nav-home").addEventListener("click", (e) => {
+  e.preventDefault();
+  history.pushState(null, "", "/");
+  listContext = null;
+  lastQuery = "";
+  qInput.value = "";
+  show("home");
 });
 
 $("users-btn").addEventListener("click", () => {

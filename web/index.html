@@ -17,17 +17,21 @@
 </head>
 <body>
   <header class="top">
-    <a class="brand" href="/">Моя полка</a>
+    <div class="top-left">
+      <a class="brand" href="/">Моя полка</a>
+      <nav class="nav" aria-label="Основное">
+        <a href="/" class="nav-link is-active" id="nav-home">Главная</a>
+        <button type="button" class="nav-link hidden" id="users-btn">Пользователи</button>
+      </nav>
+    </div>
     <form id="search-form" class="search" action="/" method="get">
-      <input id="q" name="q" type="search" placeholder="Автор и название, например: кинг сияние" autocomplete="off" autofocus>
+      <input id="q" name="q" type="search" placeholder="Книга, автор или серия" autocomplete="off" autofocus>
       <button type="submit">Найти</button>
     </form>
     <div class="top-right">
       <button type="button" class="icon-btn" data-theme-toggle title="Тема" aria-label="Тема">☾</button>
-      <span id="stats" class="stats"></span>
       <div id="user-box" class="user-box hidden">
         <span id="user-label" class="user-label"></span>
-        <button type="button" id="users-btn" class="text-btn hidden">Пользователи</button>
         <button type="button" id="logout-btn" class="text-btn">Выйти</button>
       </div>
     </div>
@@ -35,6 +39,7 @@
 
   <main>
     <section id="home" class="panel">
+      <p id="stats" class="stats"></p>
       <h1>Личная библиотека</h1>
       <p class="lead">Поиск сразу по автору, названию и серии. По умолчанию только книги на русском.</p>
     </section>
