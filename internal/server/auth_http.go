@@ -138,7 +138,9 @@ func allowBasicAuth(path string) bool {
 
 func isPublicPath(path string) bool {
 	switch {
-	case path == "/health", path == "/api/login", path == "/login.html", path == "/favicon.ico":
+	case path == "/health", path == "/api/login", path == "/login.html",
+		path == "/favicon.ico", path == "/favicon.svg",
+		path == "/apple-touch-icon.png", path == "/icon-512.png":
 		return true
 	case path == "/style.css", path == "/app.js", path == "/login.js", path == "/theme.js":
 		return true

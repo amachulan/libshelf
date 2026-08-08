@@ -63,6 +63,7 @@ func staticAssetVersion(fsys fs.FS) string {
 	for _, name := range []string{
 		"index.html", "login.html",
 		"style.css", "app.js", "login.js", "theme.js",
+		"favicon.svg",
 	} {
 		b, err := fs.ReadFile(fsys, name)
 		if err != nil {
@@ -110,15 +111,22 @@ func (s *Server) routes() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok " + version.Commit + "\n"))
 	})
-	s.mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-
 	static, err := fs.Sub(web.FS, ".")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fileServer := http.FileServer(http.FS(static))
+	s.mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		// Browsers still ask for .ico; serve the PNG mark.
+		b, err := fs.ReadFile(static, "icon-512.png")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(b)
+	})
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch path {
@@ -159,7 +167,7 @@ func (s *Server) serveHTML(w http.ResponseWriter, fsys fs.FS, name string) {
 	}
 	v := s.assetVer
 	html := string(b)
-	for _, asset := range []string{"/style.css", "/app.js", "/login.js", "/theme.js"} {
+	for _, asset := range []string{"/style.css", "/app.js", "/login.js", "/theme.js", "/favicon.svg", "/apple-touch-icon.png"} {
 		html = strings.ReplaceAll(html, `"`+asset+`"`, `"`+asset+`?v=`+v+`"`)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
