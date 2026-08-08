@@ -96,4 +96,22 @@ func TestCreateUserAsAdmin(t *testing.T) {
 	if !bytes.Contains(listOut, []byte(`"test"`)) {
 		t.Fatalf("expected test user in list: %s", listOut)
 	}
+	if !bytes.Contains(listOut, []byte(`"admin"`)) {
+		t.Fatalf("expected admin user in list: %s", listOut)
+	}
+
+	// Second create must 409, list must still include both.
+	req2, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/users", bytes.NewReader(createBody))
+	req2.Header.Set("Content-Type", "application/json")
+	for _, c := range cookies {
+		req2.AddCookie(c)
+	}
+	res3, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res3.Body.Close()
+	if res3.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate create want 409, got %d", res3.StatusCode)
+	}
 }

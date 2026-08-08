@@ -770,7 +770,11 @@ async function bootFromURL() {
 }
 
 async function loadUsers() {
-  const res = await api("/api/users");
+  // Bust caches: some proxies/browsers reuse an older GET /api/users.
+  const res = await api("/api/users?_=" + Date.now(), {
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  });
   if (!res.ok) {
     alert((await res.text()) || "Нет доступа");
     return;
@@ -778,7 +782,8 @@ async function loadUsers() {
   const data = await res.json();
   const body = $("users-body");
   body.innerHTML = "";
-  for (const u of data.users || []) {
+  const users = data.users || [];
+  for (const u of users) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td></td><td></td><td class="actions"></td>`;
     tr.children[0].textContent = u.username;
@@ -802,6 +807,7 @@ async function loadUsers() {
     body.appendChild(tr);
   }
   show("users");
+  return users;
 }
 
 $("logout-btn").addEventListener("click", async () => {
@@ -879,6 +885,8 @@ $("user-form").addEventListener("submit", async (e) => {
       const detail = (await res.text()).trim() || res.statusText;
       err.textContent = `${detail} (HTTP ${res.status}, как ${me.user.username})`;
       err.classList.remove("hidden");
+      // 409: user exists in DB — refresh list so it isn't hidden behind a stale cache.
+      if (res.status === 409) await loadUsers();
       return;
     }
     const created = await res.json();
