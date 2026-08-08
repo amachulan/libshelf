@@ -4,10 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Вход — Моя полка</title>
+  <script>
+    (function () {
+      var t = localStorage.getItem("libshelf_theme");
+      if (t !== "light" && t !== "dark") {
+        t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body class="login-body">
   <main class="login-card">
+    <button type="button" class="icon-btn" data-theme-toggle title="Тема" aria-label="Тема">☾</button>
     <h1>Моя полка</h1>
     <p class="lead">Войдите, чтобы открыть библиотеку</p>
     <form id="login-form">
@@ -23,6 +33,7 @@
       <button type="submit">Войти</button>
     </form>
   </main>
+  <script src="/theme.js"></script>
   <script src="/login.js"></script>
 </body>
 </html>

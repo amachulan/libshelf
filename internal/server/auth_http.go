@@ -57,7 +57,7 @@ func isPublicPath(path string) bool {
 	switch {
 	case path == "/health", path == "/api/login", path == "/login.html":
 		return true
-	case path == "/style.css", path == "/app.js", path == "/login.js":
+	case path == "/style.css", path == "/app.js", path == "/login.js", path == "/theme.js":
 		return true
 	default:
 		return false
