@@ -68,6 +68,9 @@ body {
   flex-wrap: wrap;
   gap: 0.55rem 0.9rem;
   align-items: center;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 0.45rem 1.15rem;
   border-bottom: 1px solid var(--line);
   background: var(--header-bg);
@@ -75,6 +78,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
+  /* Prevent a wide search row from shifting the whole page sideways on iOS. */
+  overflow-x: clip;
 }
 
 .top-left {
@@ -181,7 +186,9 @@ body {
   flex: 1 1 200px;
   max-width: 340px;
   min-width: 0;
+  width: auto;
   margin-left: auto;
+  box-sizing: border-box;
 }
 
 .field,
@@ -200,12 +207,22 @@ body {
 }
 
 .search input {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  width: 100%;
   height: 34px;
   border-radius: var(--pill-radius);
   padding: 0 0.9rem;
   font-size: 0.88rem;
+  /* iOS Safari adds extra chrome on type=search that can overflow the row. */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search input::-webkit-search-decoration,
+.search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .search button,
@@ -768,25 +785,55 @@ body.reading-mode {
 .users-table .actions { text-align: right; }
 
 @media (max-width: 960px) {
+  .top {
+    padding-left: max(0.85rem, env(safe-area-inset-left));
+    padding-right: max(0.85rem, env(safe-area-inset-right));
+  }
   .search {
     order: 3;
     flex: 1 1 100%;
-    max-width: none;
+    width: 100%;
+    max-width: 100%;
     margin-left: 0;
   }
   .top-right {
     margin-left: auto;
   }
+  /* 16px avoids iOS focus-zoom that shifts the sticky header sideways. */
+  .search input,
+  .field,
+  .login-card input,
+  .user-form input,
+  .user-form select {
+    font-size: 16px;
+  }
+  .search input {
+    height: 40px;
+  }
+  .search button {
+    height: 40px;
+    flex: 0 0 auto;
+  }
 }
 
 @media (max-width: 640px) {
   .top-left {
+    flex: 1 1 auto;
+    min-width: 0;
     flex-wrap: wrap;
     gap: 0.5rem 0.85rem;
   }
   .nav {
     width: 100%;
+    max-width: 100%;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  main {
+    padding: 1rem max(1rem, env(safe-area-inset-right)) calc(1.25rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 }
 
