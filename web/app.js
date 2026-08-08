@@ -483,14 +483,20 @@ async function loadContinue() {
   }
 }
 
+function setCatalogLettersIdle(idle) {
+  const strip = $("catalog-letters");
+  strip.classList.toggle("is-idle", idle);
+  strip.setAttribute("aria-hidden", idle ? "true" : "false");
+}
+
 function renderCatalogLetters(letters) {
   const strip = $("catalog-letters");
   strip.innerHTML = "";
   if (!letters.length) {
-    strip.classList.add("hidden");
+    setCatalogLettersIdle(true);
     return;
   }
-  strip.classList.remove("hidden");
+  setCatalogLettersIdle(false);
   for (const l of letters) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -544,9 +550,8 @@ async function openGenre(code) {
 
 function setCatalogLoading(on) {
   const loading = $("catalog-loading");
-  const list = $("catalog-list");
   loading.classList.toggle("hidden", !on);
-  list.classList.toggle("hidden", on);
+  loading.setAttribute("aria-busy", on ? "true" : "false");
   if (on) $("catalog-empty").classList.add("hidden");
 }
 
@@ -558,16 +563,14 @@ async function openCatalog(tab, letter) {
     btn.classList.toggle("is-active", btn.getAttribute("data-cat") === catalogTab);
   });
 
-  const list = $("catalog-list");
   const emptyEl = $("catalog-empty");
-  list.innerHTML = "";
   emptyEl.classList.add("hidden");
+  if (catalogTab === "genres") setCatalogLettersIdle(true);
   setCatalogLoading(true);
   show("catalog");
 
   try {
     if (catalogTab === "genres") {
-      $("catalog-letters").classList.add("hidden");
       history.pushState({ catalog: "genres" }, "", "/?catalog=genres");
       const res = await api("/api/catalog/genres");
       if (seq !== catalogLoadSeq) return;
@@ -577,6 +580,7 @@ async function openCatalog(tab, letter) {
       }
       const data = await res.json();
       if (seq !== catalogLoadSeq) return;
+      $("catalog-list").innerHTML = "";
       const genresList = data.genres || [];
       emptyEl.classList.toggle("hidden", genresList.length > 0);
       renderCatalogRows(genresList.map((g) => ({
@@ -605,6 +609,7 @@ async function openCatalog(tab, letter) {
     history.pushState({ catalog: catalogTab, letter: catalogLetter }, "", "/?" + qs.toString());
 
     renderCatalogLetters(letters);
+    $("catalog-list").innerHTML = "";
     if (catalogTab === "authors") {
       renderCatalogRows(data.authors || [], "authors");
     } else {
