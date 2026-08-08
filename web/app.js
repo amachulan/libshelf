@@ -28,6 +28,7 @@ let readerBookId = null;
 let readerSaveTimer = null;
 let restorePosition = 0;
 let fontScale = Number(localStorage.getItem("libshelf_font") || "1");
+let readMode = localStorage.getItem("libshelf_read_mode") === "pages" ? "pages" : "scroll";
 
 async function api(url, opts = {}) {
   const res = await fetch(url, { ...opts, credentials: "same-origin" });
@@ -368,16 +369,121 @@ async function openBook(id) {
   show("book");
 }
 
-function applyFontScale() {
+function applyFontScale(opts = {}) {
+  const keepPosition = opts.keepPosition !== false;
+  const pos = keepPosition && readerBookId ? readerPosition() : null;
   $("reader-content").style.fontSize = `${fontScale}rem`;
   localStorage.setItem("libshelf_font", String(fontScale));
+  if (pos != null) {
+    requestAnimationFrame(() => restoreReaderPosition(pos));
+  }
+}
+
+function readerContentEl() {
+  return $("reader-content");
+}
+
+function syncPageMetrics() {
+  const el = readerContentEl();
+  if (!el) return;
+  if (readMode !== "pages") {
+    el.style.columnWidth = "";
+    return;
+  }
+  const style = getComputedStyle(el);
+  const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+  const col = Math.max(120, el.clientWidth - pad);
+  el.style.columnWidth = col + "px";
+}
+
+function pageStride() {
+  const el = readerContentEl();
+  if (!el) return 1;
+  const style = getComputedStyle(el);
+  const col = parseFloat(el.style.columnWidth) || el.clientWidth;
+  const gap = parseFloat(style.columnGap) || 0;
+  return Math.max(1, col + gap);
+}
+
+function applyReadMode() {
+  document.body.classList.toggle("reader-pages", readMode === "pages");
+  const btn = $("reader-mode-btn");
+  if (btn) {
+    btn.textContent = readMode === "pages" ? "Лента" : "Страницы";
+    btn.title = readMode === "pages" ? "Сплошной текст" : "Листать страницами";
+  }
+  localStorage.setItem("libshelf_read_mode", readMode);
+  syncPageMetrics();
 }
 
 function readerPosition() {
+  if (readMode === "pages") {
+    const el = readerContentEl();
+    if (!el) return 0;
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 0) return 0;
+    return Math.min(1, Math.max(0, el.scrollLeft / max));
+  }
   const el = document.documentElement;
   const max = el.scrollHeight - el.clientHeight;
   if (max <= 0) return 0;
   return Math.min(1, Math.max(0, el.scrollTop / max));
+}
+
+function restoreReaderPosition(pos) {
+  const p = Math.min(1, Math.max(0, Number(pos) || 0));
+  if (readMode === "pages") {
+    const el = readerContentEl();
+    if (!el) return;
+    syncPageMetrics();
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 0) {
+      el.scrollLeft = 0;
+      return;
+    }
+    const stride = pageStride();
+    el.scrollLeft = Math.round((p * max) / stride) * stride;
+    return;
+  }
+  const el = document.documentElement;
+  const max = el.scrollHeight - el.clientHeight;
+  el.scrollTop = max > 0 ? p * max : 0;
+}
+
+function scrollToReaderTarget(target) {
+  if (!target) return;
+  if (readMode === "pages") {
+    const el = readerContentEl();
+    syncPageMetrics();
+    const cRect = el.getBoundingClientRect();
+    const tRect = target.getBoundingClientRect();
+    const delta = tRect.left - cRect.left + el.scrollLeft;
+    const stride = pageStride();
+    el.scrollTo({ left: Math.floor(delta / stride) * stride, behavior: "smooth" });
+    return;
+  }
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function flipReaderPage(dir) {
+  if (readMode !== "pages") return;
+  const el = readerContentEl();
+  syncPageMetrics();
+  el.scrollBy({ left: dir * pageStride(), behavior: "smooth" });
+  scheduleSaveProgress();
+}
+
+function setReadMode(mode) {
+  const next = mode === "pages" ? "pages" : "scroll";
+  const pos = readerBookId ? readerPosition() : restorePosition;
+  readMode = next;
+  applyReadMode();
+  if (readerBookId) {
+    requestAnimationFrame(() => {
+      restoreReaderPosition(pos);
+      scheduleSaveProgress();
+    });
+  }
 }
 
 function saveReaderProgress() {
@@ -408,7 +514,8 @@ async function openReader(id) {
   history.pushState({ read: id }, "", "/?read=" + id);
   $("reader-title").textContent = data.title || "";
   $("reader-content").innerHTML = data.html || "";
-  applyFontScale();
+  applyFontScale({ keepPosition: false });
+  applyReadMode();
 
   const toc = $("reader-toc");
   toc.innerHTML = "";
@@ -423,9 +530,9 @@ async function openReader(id) {
       a.className = "toc-link";
       a.textContent = ch.title;
       a.addEventListener("click", () => {
-        const target = document.getElementById(ch.id);
-        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        scrollToReaderTarget(document.getElementById(ch.id));
         toc.classList.add("hidden");
+        scheduleSaveProgress();
       });
       li.appendChild(a);
       ul.appendChild(li);
@@ -436,12 +543,7 @@ async function openReader(id) {
 
   show("reader");
   requestAnimationFrame(() => {
-    const max = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-    if (restorePosition > 0 && max > 0) {
-      document.documentElement.scrollTop = restorePosition * max;
-    } else {
-      document.documentElement.scrollTop = 0;
-    }
+    requestAnimationFrame(() => restoreReaderPosition(restorePosition));
   });
 }
 
@@ -449,6 +551,7 @@ function closeReader() {
   saveReaderProgress();
   readerBookId = null;
   $("reader-toc").classList.add("hidden");
+  document.body.classList.remove("reader-pages");
   if (currentBookId) {
     openBook(currentBookId);
   } else {
@@ -719,6 +822,13 @@ window.addEventListener("popstate", () => {
 
 window.addEventListener("scroll", () => {
   if (!document.body.classList.contains("reading-mode")) return;
+  if (readMode === "pages") return;
+  scheduleSaveProgress();
+}, { passive: true });
+
+$("reader-content").addEventListener("scroll", () => {
+  if (!document.body.classList.contains("reading-mode")) return;
+  if (readMode !== "pages") return;
   scheduleSaveProgress();
 }, { passive: true });
 
@@ -726,6 +836,11 @@ $("reader-back").addEventListener("click", closeReader);
 $("reader-toc-btn").addEventListener("click", () => {
   $("reader-toc").classList.toggle("hidden");
 });
+$("reader-mode-btn").addEventListener("click", () => {
+  setReadMode(readMode === "pages" ? "scroll" : "pages");
+});
+$("reader-page-prev").addEventListener("click", () => flipReaderPage(-1));
+$("reader-page-next").addEventListener("click", () => flipReaderPage(1));
 $("reader-font-up").addEventListener("click", () => {
   fontScale = Math.min(1.6, Math.round((fontScale + 0.1) * 10) / 10);
   applyFontScale();
@@ -733,6 +848,26 @@ $("reader-font-up").addEventListener("click", () => {
 $("reader-font-down").addEventListener("click", () => {
   fontScale = Math.max(0.85, Math.round((fontScale - 0.1) * 10) / 10);
   applyFontScale();
+});
+
+window.addEventListener("keydown", (e) => {
+  if (!document.body.classList.contains("reading-mode") || readMode !== "pages") return;
+  if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+    e.preventDefault();
+    flipReaderPage(1);
+  } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+    e.preventDefault();
+    flipReaderPage(-1);
+  }
+});
+
+window.addEventListener("resize", () => {
+  if (!document.body.classList.contains("reading-mode") || readMode !== "pages" || !readerBookId) return;
+  const pos = readerPosition();
+  requestAnimationFrame(() => {
+    syncPageMetrics();
+    restoreReaderPosition(pos);
+  });
 });
 
 async function bootFromURL() {
