@@ -35,22 +35,38 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		token, _ := r.Cookie(auth.CookieName())
-		var tok string
-		if token != nil {
-			tok = token.Value
-		}
-		u, err := s.auth.UserByToken(tok)
-		if err != nil {
-			if wantsJSON(r) {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-			http.Redirect(w, r, "/login.html", http.StatusFound)
+		if u := s.resolveUser(r); u != nil {
+			next.ServeHTTP(w, s.withUser(r, u))
 			return
 		}
-		next.ServeHTTP(w, s.withUser(r, u))
+		if strings.HasPrefix(r.URL.Path, "/opds") {
+			w.Header().Set("WWW-Authenticate", `Basic realm="libshelf"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if wantsJSON(r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		http.Redirect(w, r, "/login.html", http.StatusFound)
 	})
+}
+
+func (s *Server) resolveUser(r *http.Request) *auth.User {
+	if s.auth == nil {
+		return nil
+	}
+	if c, err := r.Cookie(auth.CookieName()); err == nil && c.Value != "" {
+		if u, err := s.auth.UserByToken(c.Value); err == nil {
+			return u
+		}
+	}
+	if user, pass, ok := r.BasicAuth(); ok {
+		if u, err := s.auth.Authenticate(user, pass); err == nil {
+			return u
+		}
+	}
+	return nil
 }
 
 func isPublicPath(path string) bool {

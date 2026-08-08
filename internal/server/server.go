@@ -93,7 +93,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/shelf/", s.handleShelf)
 	s.mux.HandleFunc("/api/author/", s.handleAuthor)
 	s.mux.HandleFunc("/api/series/", s.handleSeries)
+	s.mux.HandleFunc("/api/catalog", s.handleCatalog)
+	s.mux.HandleFunc("/api/catalog/", s.handleCatalog)
 	s.mux.HandleFunc("/api/stats", s.handleStats)
+	s.mux.HandleFunc("/opds", s.handleOPDS)
+	s.mux.HandleFunc("/opds/", s.handleOPDS)
 	s.mux.HandleFunc("/cover/", s.handleCover)
 	s.mux.HandleFunc("/download/", s.handleDownload)
 	s.mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {

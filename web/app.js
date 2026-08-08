@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 const home = $("home");
 const results = $("results");
 const bookPanel = $("book");
+const catalogPanel = $("catalog");
 const listsPanel = $("lists");
 const usersPanel = $("users");
 const readerEl = $("reader");
@@ -15,11 +16,13 @@ const resultsSub = $("results-sub");
 
 let lastQuery = "";
 let lastBooks = [];
-let listContext = null; // { kind: 'author'|'series', id, name }
+let listContext = null; // { kind: 'author'|'series'|'genre', id, name }
 let currentUser = null;
 let currentBookId = null;
 let currentShelfStatus = "";
 let shelfTab = "reading";
+let catalogTab = "authors";
+let catalogLetter = "";
 let readerBookId = null;
 let readerSaveTimer = null;
 let restorePosition = 0;
@@ -88,10 +91,12 @@ function show(panel) {
   home.classList.toggle("hidden", panel !== "home");
   results.classList.toggle("hidden", panel !== "results");
   bookPanel.classList.toggle("hidden", panel !== "book");
+  catalogPanel.classList.toggle("hidden", panel !== "catalog");
   listsPanel.classList.toggle("hidden", panel !== "lists");
   usersPanel.classList.toggle("hidden", panel !== "users");
 
   $("nav-home").classList.toggle("is-active", panel === "home" || panel === "results" || panel === "book");
+  $("nav-catalog").classList.toggle("is-active", panel === "catalog");
   $("nav-lists").classList.toggle("is-active", panel === "lists");
   $("users-btn").classList.toggle("is-active", panel === "users");
 }
@@ -472,6 +477,140 @@ async function loadContinue() {
   }
 }
 
+function renderCatalogLetters(letters) {
+  const strip = $("catalog-letters");
+  strip.innerHTML = "";
+  if (!letters.length) {
+    strip.classList.add("hidden");
+    return;
+  }
+  strip.classList.remove("hidden");
+  for (const l of letters) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "letter-btn" + (l.letter === catalogLetter ? " is-active" : "");
+    btn.textContent = l.letter;
+    btn.title = formatNum(l.count);
+    btn.addEventListener("click", () => openCatalog(catalogTab, l.letter));
+    strip.appendChild(btn);
+  }
+}
+
+function renderCatalogRows(items, kind) {
+  const list = $("catalog-list");
+  const emptyEl = $("catalog-empty");
+  list.innerHTML = "";
+  emptyEl.classList.toggle("hidden", items.length > 0);
+  for (const it of items) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "catalog-row";
+    const name = it.name || it.title;
+    row.innerHTML = `<span class="catalog-name"></span><span class="catalog-count"></span>`;
+    row.querySelector(".catalog-name").textContent = name;
+    row.querySelector(".catalog-count").textContent = formatNum(it.books);
+    row.addEventListener("click", () => {
+      if (kind === "authors") openAuthor(it.id);
+      else if (kind === "series") openSeries(it.id);
+      else if (kind === "genres") openGenre(it.code);
+    });
+    list.appendChild(row);
+  }
+}
+
+async function openGenre(code) {
+  const res = await api("/api/catalog/genres/" + encodeURIComponent(code) + "?limit=100");
+  if (!res.ok) {
+    alert("Жанр недоступен");
+    return;
+  }
+  const data = await res.json();
+  history.pushState({ genre: code }, "", "/?genre=" + encodeURIComponent(code));
+  listContext = { kind: "genre", id: code, name: data.name };
+  lastBooks = data.books || [];
+  resultsBack.classList.remove("hidden");
+  resultsSub.classList.remove("hidden");
+  $("results-title").textContent = `Жанр: ${data.name}`;
+  resultsSub.textContent = `${formatNum(data.total)} книг`;
+  renderBookGrid(lastBooks);
+  show("results");
+}
+
+async function openCatalog(tab, letter) {
+  catalogTab = tab || catalogTab || "authors";
+  catalogLetter = letter || "";
+  document.querySelectorAll("#catalog-tabs .shelf-pill").forEach((btn) => {
+    btn.classList.toggle("is-active", btn.getAttribute("data-cat") === catalogTab);
+  });
+
+  const qs = new URLSearchParams();
+  qs.set("catalog", catalogTab);
+  if (catalogLetter) qs.set("letter", catalogLetter);
+  history.pushState({ catalog: catalogTab, letter: catalogLetter }, "", "/?" + qs.toString());
+
+  const list = $("catalog-list");
+  const emptyEl = $("catalog-empty");
+  list.innerHTML = "";
+  emptyEl.classList.add("hidden");
+
+  if (catalogTab === "genres") {
+    $("catalog-letters").classList.add("hidden");
+    const res = await api("/api/catalog/genres");
+    if (!res.ok) {
+      alert("Не удалось загрузить жанры");
+      return;
+    }
+    const data = await res.json();
+    const genresList = data.genres || [];
+    emptyEl.classList.toggle("hidden", genresList.length > 0);
+    renderCatalogRows(genresList.map((g) => ({
+      code: g.code,
+      name: g.name || g.code,
+      books: g.books,
+    })), "genres");
+    show("catalog");
+    return;
+  }
+
+  const lettersRes = await api("/api/catalog/" + catalogTab);
+  if (!lettersRes.ok) {
+    alert("Не удалось загрузить каталог");
+    return;
+  }
+  const lettersData = await lettersRes.json();
+  const letters = lettersData.letters || [];
+  if (!catalogLetter && letters.length) {
+    catalogLetter = letters[0].letter;
+  }
+  renderCatalogLetters(letters);
+  if (!catalogLetter) {
+    emptyEl.classList.remove("hidden");
+    show("catalog");
+    return;
+  }
+  // refresh active letter
+  renderCatalogLetters(letters);
+
+  const res = await api(
+    "/api/catalog/" + catalogTab + "?letter=" + encodeURIComponent(catalogLetter) + "&limit=300"
+  );
+  if (!res.ok) {
+    alert("Не удалось загрузить список");
+    return;
+  }
+  const data = await res.json();
+  if (catalogTab === "authors") {
+    renderCatalogRows(data.authors || [], "authors");
+  } else {
+    renderCatalogRows((data.series || []).map((s) => ({
+      id: s.id,
+      name: s.title,
+      books: s.books,
+    })), "series");
+  }
+  show("catalog");
+}
+
 async function openLists(status) {
   if (!currentUser) return;
   shelfTab = status || shelfTab || "reading";
@@ -501,6 +640,11 @@ function goBackFromBook() {
     if (kind === "series") {
       history.replaceState({ series: id }, "", "/?series=" + id);
       openSeries(id);
+      return;
+    }
+    if (kind === "genre") {
+      history.replaceState({ genre: id }, "", "/?genre=" + encodeURIComponent(id));
+      openGenre(id);
       return;
     }
   }
@@ -536,12 +680,24 @@ resultsBack.addEventListener("click", () => {
   if (lastQuery) {
     history.replaceState(null, "", "/?q=" + encodeURIComponent(lastQuery));
     doSearch(lastQuery);
-  } else {
-    history.replaceState(null, "", "/");
-    listContext = null;
-    show("home");
-    loadContinue();
+    return;
   }
+  if (listContext?.kind === "genre") {
+    openCatalog("genres", "");
+    return;
+  }
+  if (listContext?.kind === "author") {
+    openCatalog("authors", catalogLetter || "");
+    return;
+  }
+  if (listContext?.kind === "series") {
+    openCatalog("series", catalogLetter || "");
+    return;
+  }
+  history.replaceState(null, "", "/");
+  listContext = null;
+  show("home");
+  loadContinue();
 });
 
 window.addEventListener("popstate", () => {
@@ -572,6 +728,9 @@ async function bootFromURL() {
   const book = params.get("book");
   const author = params.get("author");
   const series = params.get("series");
+  const genre = params.get("genre");
+  const catalog = params.get("catalog");
+  const letter = params.get("letter") || "";
   const lists = params.get("lists");
   const q = params.get("q") || "";
   qInput.value = q;
@@ -582,6 +741,14 @@ async function bootFromURL() {
   }
   if (lists && currentUser) {
     await openLists(lists);
+    return;
+  }
+  if (catalog) {
+    await openCatalog(catalog, letter);
+    return;
+  }
+  if (genre && !book) {
+    await openGenre(genre);
     return;
   }
   if (author && !book) {
@@ -657,6 +824,12 @@ $("nav-home").addEventListener("click", (e) => {
   qInput.value = "";
   show("home");
   loadContinue();
+});
+
+$("nav-catalog").addEventListener("click", () => openCatalog(catalogTab, catalogLetter));
+
+document.querySelectorAll("#catalog-tabs .shelf-pill").forEach((btn) => {
+  btn.addEventListener("click", () => openCatalog(btn.getAttribute("data-cat"), ""));
 });
 
 $("nav-lists").addEventListener("click", () => openLists(shelfTab));

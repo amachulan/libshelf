@@ -7,6 +7,8 @@
 - карточка книги, обложка из FB2, скачивание
 - **читалка** FB2 в браузере (скролл, оглавление, прогресс)
 - личные списки **Читаю / Прочитано / Хочу**
+- **каталог**: авторы и серии по буквам, жанры
+- **OPDS** для ридеров (`/opds`, HTTP Basic при `--auth=users`)
 - вход с ролями **читатель** / **админ**
 - один бинарник Go, SQLite + FTS5
 
@@ -125,6 +127,17 @@ proxy_set_header Connection "upgrade";
 
 Откройте `https://books.machulan.ru` и проверьте поиск `кинг сияние`.
 
+## OPDS
+
+Каталог для приложений вроде KOReader / Moon+ / Aldiko:
+
+```
+https://books.machulan.ru/opds
+```
+
+При `--auth=users` клиент должен уметь **HTTP Basic** (логин/пароль libshelf).  
+Поиск: OpenSearch по ссылке из корневого фида, или ` /opds/search?q=...`.
+
 ## API
 
 | Метод | Путь | Описание |
@@ -136,6 +149,12 @@ proxy_set_header Connection "upgrade";
 | GET | `/api/shelf?status=reading\|read\|want` | список полки |
 | GET | `/api/shelf/continue` | продолжить чтение |
 | PUT | `/api/shelf/{id}` | `{status}` или `{status:null}` |
+| GET | `/api/catalog/authors` | буквы авторов |
+| GET | `/api/catalog/authors?letter=К` | авторы на букву |
+| GET | `/api/catalog/series?letter=` | серии |
+| GET | `/api/catalog/genres` | жанры |
+| GET | `/api/catalog/genres/{code}` | книги жанра |
+| GET | `/opds` | OPDS root |
 | GET | `/cover/{id}` | обложка |
 | GET | `/download/{id}` | скачать FB2 |
 | GET | `/api/stats` | число книг (ru) |

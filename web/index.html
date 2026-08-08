@@ -21,6 +21,7 @@
       <a class="brand" href="/">Моя полка</a>
       <nav class="nav" aria-label="Основное">
         <a href="/" class="nav-link is-active" id="nav-home">Главная</a>
+        <button type="button" class="nav-link" id="nav-catalog">Каталог</button>
         <button type="button" class="nav-link hidden" id="nav-lists">Списки</button>
         <button type="button" class="nav-link hidden" id="users-btn">Пользователи</button>
       </nav>
@@ -86,6 +87,18 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <section id="catalog" class="panel hidden">
+      <h2>Каталог</h2>
+      <div class="shelf-tabs" id="catalog-tabs">
+        <button type="button" class="shelf-pill is-active" data-cat="authors">Авторы</button>
+        <button type="button" class="shelf-pill" data-cat="genres">Жанры</button>
+        <button type="button" class="shelf-pill" data-cat="series">Серии</button>
+      </div>
+      <div id="catalog-letters" class="letter-strip hidden"></div>
+      <div id="catalog-list" class="catalog-list"></div>
+      <p id="catalog-empty" class="empty hidden">Ничего нет</p>
     </section>
 
     <section id="lists" class="panel hidden">

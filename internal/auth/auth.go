@@ -232,21 +232,30 @@ func (a *Auth) SetRole(id int64, role string) error {
 	return err
 }
 
-func (a *Auth) Login(username, password string) (token string, user *User, err error) {
+// Authenticate checks username/password without creating a session (for HTTP Basic / OPDS).
+func (a *Auth) Authenticate(username, password string) (*User, error) {
 	var u User
 	var hash string
-	err = a.db.QueryRow(
+	err := a.db.QueryRow(
 		`SELECT id, username, role, pass_hash FROM users WHERE username = ? COLLATE NOCASE`,
 		strings.TrimSpace(username),
 	).Scan(&u.ID, &u.Username, &u.Role, &hash)
 	if err == sql.ErrNoRows {
-		return "", nil, ErrInvalidCreds
+		return nil, ErrInvalidCreds
 	}
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
-		return "", nil, ErrInvalidCreds
+		return nil, ErrInvalidCreds
+	}
+	return &u, nil
+}
+
+func (a *Auth) Login(username, password string) (token string, user *User, err error) {
+	u, err := a.Authenticate(username, password)
+	if err != nil {
+		return "", nil, err
 	}
 	token, err = randomToken(32)
 	if err != nil {
@@ -256,7 +265,7 @@ func (a *Auth) Login(username, password string) (token string, user *User, err e
 	if _, err := a.db.Exec(`INSERT INTO sessions(token, user_id, expires_at) VALUES(?,?,?)`, token, u.ID, exp); err != nil {
 		return "", nil, err
 	}
-	return token, &u, nil
+	return token, u, nil
 }
 
 func (a *Auth) Logout(token string) {
