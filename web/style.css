@@ -681,6 +681,10 @@ main {
   position: relative;
 }
 
+.reader-viewport {
+  min-width: 0;
+}
+
 .reader-page-nav {
   display: none;
 }
@@ -755,6 +759,16 @@ body.reader-pages .reader-stage {
   overflow: hidden;
 }
 
+body.reader-pages .reader-viewport {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  /* Hard clip so the next CSS column never paints outside. */
+  clip-path: inset(0);
+}
+
 body.reader-pages .reader-page-nav {
   display: flex;
   align-items: center;
@@ -782,8 +796,7 @@ body.reader-pages .reader-content {
   min-width: 0;
   max-width: 100%;
   margin: 0;
-  /* No horizontal padding: otherwise the next CSS column peeks on the right. */
-  padding: 1.15rem 0 1.5rem;
+  padding: 1.15rem 1rem 1.5rem;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
@@ -791,10 +804,14 @@ body.reader-pages .reader-content {
   column-fill: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 body.reader-pages .reader-content::-webkit-scrollbar {
+  width: 0;
+  height: 0;
   display: none;
+  background: transparent;
 }
 
 body.reader-pages .reader-content .fb2-img {

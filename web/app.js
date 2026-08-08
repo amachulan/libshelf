@@ -390,9 +390,10 @@ function syncPageMetrics() {
     el.style.columnWidth = "";
     return;
   }
-  // Column width must match the visible client width exactly, or the next
-  // page leaks as a thin strip of letters on the right.
-  const col = Math.max(120, el.clientWidth);
+  const style = getComputedStyle(el);
+  const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+  // One page = content box width; viewport clips any subpixel leftovers.
+  const col = Math.max(120, Math.floor(el.clientWidth - pad));
   el.style.columnWidth = col + "px";
 }
 
