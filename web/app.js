@@ -51,6 +51,18 @@ function placeholderCover() {
   );
 }
 
+/** Compact author line for cards: "Иванов, Петров и ещё 3". */
+function shortAuthors(authors, maxNames = 2) {
+  const list = (authors || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (list.length === 0) return "";
+  if (list.length <= maxNames) return list.join(", ");
+  const rest = list.length - maxNames;
+  return `${list.slice(0, maxNames).join(", ")} и ещё ${rest}`;
+}
+
 function renderResults(query, books) {
   lastQuery = query;
   lastBooks = books || [];
@@ -67,8 +79,12 @@ function renderResults(query, books) {
         <p class="title"></p>
         <p class="authors"></p>
       </div>`;
-    el.querySelector(".title").textContent = b.title;
-    el.querySelector(".authors").textContent = b.authors || "";
+    const titleEl = el.querySelector(".title");
+    const authorsEl = el.querySelector(".authors");
+    titleEl.textContent = b.title;
+    titleEl.title = b.title || "";
+    authorsEl.textContent = shortAuthors(b.authors);
+    authorsEl.title = b.authors || "";
     const img = el.querySelector("img");
     img.onerror = () => { img.src = placeholderCover(); };
     el.addEventListener("click", () => openBook(b.id));
