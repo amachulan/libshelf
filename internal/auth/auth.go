@@ -69,6 +69,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_exp ON sessions(expires_at);
 		db.Close()
 		return nil, err
 	}
+	if err := a.ensureShelfSchema(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return a, nil
 }
 

@@ -130,3 +130,45 @@ func scanBooks(rows *sql.Rows) ([]Book, error) {
 	}
 	return out, rows.Err()
 }
+
+// BooksByIDs returns books for the given ids, preserving input order when possible.
+func (s *Store) BooksByIDs(ids []int64) ([]Book, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	q := `
+SELECT` + bookColumns + `
+FROM books b
+LEFT JOIN series s ON s.id = b.series_id
+WHERE b.deleted = 0 AND b.lang = 'ru' AND b.id IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byID := make(map[int64]Book, len(ids))
+	for rows.Next() {
+		var b Book
+		if err := rows.Scan(&b.ID, &b.Title, &b.Authors, &b.Series, &b.SeriesNum,
+			&b.Year, &b.Ext, &b.Size, &b.Lang, &b.Rate); err != nil {
+			return nil, err
+		}
+		byID[b.ID] = b
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]Book, 0, len(ids))
+	for _, id := range ids {
+		if b, ok := byID[id]; ok {
+			out = append(out, b)
+		}
+	}
+	return out, nil
+}

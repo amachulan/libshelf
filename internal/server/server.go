@@ -89,6 +89,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/users/", s.handleUsers)
 	s.mux.HandleFunc("/api/search", s.handleSearch)
 	s.mux.HandleFunc("/api/book/", s.handleBook)
+	s.mux.HandleFunc("/api/shelf", s.handleShelf)
+	s.mux.HandleFunc("/api/shelf/", s.handleShelf)
 	s.mux.HandleFunc("/api/author/", s.handleAuthor)
 	s.mux.HandleFunc("/api/series/", s.handleSeries)
 	s.mux.HandleFunc("/api/stats", s.handleStats)
@@ -174,11 +176,44 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBook(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(strings.TrimPrefix(r.URL.Path, "/api/book/"))
+	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/book/"), "/")
+	parts := strings.Split(rest, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	id, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
 		httpError(w, err, 400)
 		return
 	}
+	if len(parts) == 1 {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.handleBookDetails(w, r, id)
+		return
+	}
+	switch parts[1] {
+	case "read":
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.handleBookRead(w, r, id)
+	case "progress":
+		if r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.handleBookProgress(w, r, id)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) handleBookDetails(w http.ResponseWriter, r *http.Request, id int64) {
 	d, err := s.store.GetBook(id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -204,7 +239,101 @@ func (s *Server) handleBook(w http.ResponseWriter, r *http.Request) {
 		d.PubYear = meta.Year
 		d.ISBN = meta.ISBN
 	}
+	if u := userFrom(r.Context()); u != nil && s.auth != nil {
+		if entry, err := s.auth.GetShelfEntry(u.ID, id); err == nil {
+			d.ShelfStatus = entry.Status
+			d.Progress = entry.Progress
+		}
+	}
 	writeJSON(w, d)
+}
+
+func (s *Server) handleBookRead(w http.ResponseWriter, r *http.Request, id int64) {
+	doc, err := s.readerDoc(id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpError(w, err, 404)
+			return
+		}
+		httpError(w, err, 404)
+		return
+	}
+	out := map[string]any{
+		"id":       id,
+		"title":    doc.Title,
+		"html":     doc.HTML,
+		"chapters": doc.Chapters,
+	}
+	if u := userFrom(r.Context()); u != nil && s.auth != nil {
+		_ = s.auth.MarkReading(u.ID, id)
+		if pos, err := s.auth.GetProgress(u.ID, id); err == nil {
+			out["position"] = pos
+		}
+		if entry, err := s.auth.GetShelfEntry(u.ID, id); err == nil {
+			out["shelfStatus"] = entry.Status
+		}
+	}
+	writeJSON(w, out)
+}
+
+func (s *Server) handleBookProgress(w http.ResponseWriter, r *http.Request, id int64) {
+	if s.auth == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	u := s.requireUser(w, r)
+	if u == nil {
+		return
+	}
+	var body struct {
+		Position float64 `json:"position"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if _, err := s.store.BookFile(id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			httpError(w, err, 404)
+			return
+		}
+		httpError(w, err, 500)
+		return
+	}
+	if err := s.auth.SetProgress(u.ID, id, body.Position); err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	_ = s.auth.MarkReading(u.ID, id)
+	writeJSON(w, map[string]any{"position": body.Position})
+}
+
+func (s *Server) readerDoc(id int64) (*fb2.ReaderDoc, error) {
+	cachePath := filepath.Join(s.coverDir, strconv.FormatInt(id, 10)+".read.json")
+	if data, err := os.ReadFile(cachePath); err == nil {
+		var doc fb2.ReaderDoc
+		if json.Unmarshal(data, &doc) == nil && doc.HTML != "" {
+			return &doc, nil
+		}
+	}
+	bf, err := s.store.BookFile(id)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := archive.OpenBook(s.libDir, bf.Folder, bf.File, bf.Ext)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := fb2.ExtractReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	if data, err := json.Marshal(doc); err == nil {
+		s.coverMu.Lock()
+		_ = os.WriteFile(cachePath, data, 0o644)
+		s.coverMu.Unlock()
+	}
+	return doc, nil
 }
 
 func (s *Server) handleAuthor(w http.ResponseWriter, r *http.Request) {

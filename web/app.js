@@ -3,7 +3,9 @@ const $ = (id) => document.getElementById(id);
 const home = $("home");
 const results = $("results");
 const bookPanel = $("book");
+const listsPanel = $("lists");
 const usersPanel = $("users");
+const readerEl = $("reader");
 const grid = $("grid");
 const empty = $("empty");
 const form = $("search-form");
@@ -15,6 +17,13 @@ let lastQuery = "";
 let lastBooks = [];
 let listContext = null; // { kind: 'author'|'series', id, name }
 let currentUser = null;
+let currentBookId = null;
+let currentShelfStatus = "";
+let shelfTab = "reading";
+let readerBookId = null;
+let readerSaveTimer = null;
+let restorePosition = 0;
+let fontScale = Number(localStorage.getItem("libshelf_font") || "1");
 
 async function api(url, opts) {
   const res = await fetch(url, opts);
@@ -36,6 +45,7 @@ async function loadSession() {
   if (data.auth && data.user) {
     currentUser = data.user;
     $("user-box").classList.remove("hidden");
+    $("nav-lists").classList.remove("hidden");
     $("user-label").textContent = roleLabel(data.user.role);
     $("user-label").title = data.user.username;
     $("users-btn").classList.toggle("hidden", data.user.role !== "admin");
@@ -69,13 +79,21 @@ function formatSize(bytes) {
 }
 
 function show(panel) {
+  const reading = panel === "reader";
+  document.body.classList.toggle("reading-mode", reading);
+  readerEl.classList.toggle("hidden", !reading);
+  $("site-header").classList.toggle("hidden", reading);
+  $("site-main").classList.toggle("hidden", reading);
+
   home.classList.toggle("hidden", panel !== "home");
   results.classList.toggle("hidden", panel !== "results");
   bookPanel.classList.toggle("hidden", panel !== "book");
+  listsPanel.classList.toggle("hidden", panel !== "lists");
   usersPanel.classList.toggle("hidden", panel !== "users");
-  const onUsers = panel === "users";
-  $("nav-home").classList.toggle("is-active", !onUsers);
-  $("users-btn").classList.toggle("is-active", onUsers);
+
+  $("nav-home").classList.toggle("is-active", panel === "home" || panel === "results" || panel === "book");
+  $("nav-lists").classList.toggle("is-active", panel === "lists");
+  $("users-btn").classList.toggle("is-active", panel === "users");
 }
 
 function coverSrc(url, id) {
@@ -105,9 +123,9 @@ function shortAuthors(authors, maxNames = 2) {
   return `${list.slice(0, maxNames).join(", ")} и ещё ${rest}`;
 }
 
-function renderBookGrid(books) {
-  grid.innerHTML = "";
-  empty.classList.toggle("hidden", books.length > 0);
+function renderBookGrid(books, target = grid, emptyEl = empty) {
+  target.innerHTML = "";
+  if (emptyEl) emptyEl.classList.toggle("hidden", books.length > 0);
   for (const b of books) {
     const el = document.createElement("article");
     el.className = "card";
@@ -130,7 +148,7 @@ function renderBookGrid(books) {
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter") openBook(b.id);
     });
-    grid.appendChild(el);
+    target.appendChild(el);
   }
 }
 
@@ -163,6 +181,7 @@ async function doSearch(query) {
     listContext = null;
     show("home");
     history.replaceState(null, "", "/");
+    loadContinue();
     return;
   }
   history.replaceState(null, "", "/?q=" + encodeURIComponent(query));
@@ -206,6 +225,40 @@ function linkButton(text, onClick) {
   return a;
 }
 
+function syncShelfPills(status) {
+  currentShelfStatus = status || "";
+  document.querySelectorAll("#shelf-controls .shelf-pill").forEach((btn) => {
+    const st = btn.getAttribute("data-status");
+    btn.classList.toggle("is-active", st === currentShelfStatus && st !== "");
+  });
+}
+
+async function setShelfStatus(status) {
+  if (!currentUser || !currentBookId) return;
+  const body = status === "" ? { status: null } : { status };
+  const res = await api("/api/shelf/" + currentBookId, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    alert(await res.text());
+    return;
+  }
+  const data = await res.json();
+  syncShelfPills(data.status || "");
+  updateReadButton(data.progress || 0);
+}
+
+function updateReadButton(progress) {
+  const btn = $("book-read");
+  if (progress > 0.01 && progress < 0.99) {
+    btn.textContent = `Продолжить · ${Math.round(progress * 100)}%`;
+  } else {
+    btn.textContent = "Читать";
+  }
+}
+
 async function openBook(id) {
   const res = await api("/api/book/" + id);
   if (!res.ok) {
@@ -213,6 +266,7 @@ async function openBook(id) {
     return;
   }
   const b = await res.json();
+  currentBookId = b.id;
   const qs = new URLSearchParams();
   qs.set("book", id);
   if (lastQuery) qs.set("q", lastQuery);
@@ -290,7 +344,150 @@ async function openBook(id) {
   cover.src = coverSrc(b.coverUrl, b.id);
   cover.onerror = () => { cover.src = placeholderCover(); };
   $("book-download").href = b.downloadUrl;
+  updateReadButton(b.progress || 0);
+
+  const shelf = $("shelf-controls");
+  if (currentUser) {
+    shelf.classList.remove("hidden");
+    syncShelfPills(b.shelfStatus || "");
+  } else {
+    shelf.classList.add("hidden");
+  }
+
   show("book");
+}
+
+function applyFontScale() {
+  $("reader-content").style.fontSize = `${fontScale}rem`;
+  localStorage.setItem("libshelf_font", String(fontScale));
+}
+
+function readerPosition() {
+  const el = document.documentElement;
+  const max = el.scrollHeight - el.clientHeight;
+  if (max <= 0) return 0;
+  return Math.min(1, Math.max(0, el.scrollTop / max));
+}
+
+function saveReaderProgress() {
+  if (!currentUser || !readerBookId) return;
+  const position = readerPosition();
+  api("/api/book/" + readerBookId + "/progress", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ position }),
+  }).catch(() => {});
+}
+
+function scheduleSaveProgress() {
+  if (readerSaveTimer) clearTimeout(readerSaveTimer);
+  readerSaveTimer = setTimeout(saveReaderProgress, 800);
+}
+
+async function openReader(id) {
+  const res = await api("/api/book/" + id + "/read");
+  if (!res.ok) {
+    alert("Не удалось открыть книгу");
+    return;
+  }
+  const data = await res.json();
+  readerBookId = id;
+  currentBookId = id;
+  restorePosition = data.position || 0;
+  history.pushState({ read: id }, "", "/?read=" + id);
+  $("reader-title").textContent = data.title || "";
+  $("reader-content").innerHTML = data.html || "";
+  applyFontScale();
+
+  const toc = $("reader-toc");
+  toc.innerHTML = "";
+  toc.classList.add("hidden");
+  const chapters = data.chapters || [];
+  if (chapters.length) {
+    const ul = document.createElement("ul");
+    for (const ch of chapters) {
+      const li = document.createElement("li");
+      const a = document.createElement("button");
+      a.type = "button";
+      a.className = "toc-link";
+      a.textContent = ch.title;
+      a.addEventListener("click", () => {
+        const target = document.getElementById(ch.id);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        toc.classList.add("hidden");
+      });
+      li.appendChild(a);
+      ul.appendChild(li);
+    }
+    toc.appendChild(ul);
+  }
+  $("reader-toc-btn").classList.toggle("hidden", chapters.length === 0);
+
+  show("reader");
+  requestAnimationFrame(() => {
+    const max = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+    if (restorePosition > 0 && max > 0) {
+      document.documentElement.scrollTop = restorePosition * max;
+    } else {
+      document.documentElement.scrollTop = 0;
+    }
+  });
+}
+
+function closeReader() {
+  saveReaderProgress();
+  readerBookId = null;
+  $("reader-toc").classList.add("hidden");
+  if (currentBookId) {
+    openBook(currentBookId);
+  } else {
+    history.replaceState(null, "", "/");
+    show("home");
+    loadContinue();
+  }
+}
+
+async function loadContinue() {
+  const block = $("continue-block");
+  if (!currentUser) {
+    block.classList.add("hidden");
+    return;
+  }
+  try {
+    const res = await api("/api/shelf/continue?limit=6");
+    if (!res.ok) {
+      block.classList.add("hidden");
+      return;
+    }
+    const data = await res.json();
+    const books = (data.items || []).map((it) => it.book).filter(Boolean);
+    if (!books.length) {
+      block.classList.add("hidden");
+      return;
+    }
+    block.classList.remove("hidden");
+    renderBookGrid(books, $("continue-grid"), null);
+  } catch {
+    block.classList.add("hidden");
+  }
+}
+
+async function openLists(status) {
+  if (!currentUser) return;
+  shelfTab = status || shelfTab || "reading";
+  history.pushState({ lists: shelfTab }, "", "/?lists=" + shelfTab);
+  document.querySelectorAll("#shelf-tabs .shelf-pill").forEach((btn) => {
+    btn.classList.toggle("is-active", btn.getAttribute("data-status") === shelfTab);
+  });
+  const res = await api("/api/shelf?status=" + encodeURIComponent(shelfTab) + "&limit=100");
+  if (!res.ok) {
+    alert("Не удалось загрузить списки");
+    return;
+  }
+  const data = await res.json();
+  const books = (data.items || []).map((it) => it.book).filter(Boolean);
+  renderBookGrid(books, $("lists-grid"), $("lists-empty"));
+  show("lists");
 }
 
 function goBackFromBook() {
@@ -313,6 +510,7 @@ function goBackFromBook() {
   } else {
     history.replaceState(null, "", "/");
     show("home");
+    loadContinue();
   }
 }
 
@@ -322,6 +520,17 @@ form.addEventListener("submit", (e) => {
 });
 
 $("back").addEventListener("click", goBackFromBook);
+$("book-read").addEventListener("click", () => {
+  if (currentBookId) openReader(currentBookId);
+});
+
+document.querySelectorAll("#shelf-controls .shelf-pill").forEach((btn) => {
+  btn.addEventListener("click", () => setShelfStatus(btn.getAttribute("data-status") || ""));
+});
+
+document.querySelectorAll("#shelf-tabs .shelf-pill").forEach((btn) => {
+  btn.addEventListener("click", () => openLists(btn.getAttribute("data-status")));
+});
 
 resultsBack.addEventListener("click", () => {
   if (lastQuery) {
@@ -331,6 +540,7 @@ resultsBack.addEventListener("click", () => {
     history.replaceState(null, "", "/");
     listContext = null;
     show("home");
+    loadContinue();
   }
 });
 
@@ -338,14 +548,42 @@ window.addEventListener("popstate", () => {
   bootFromURL();
 });
 
+window.addEventListener("scroll", () => {
+  if (!document.body.classList.contains("reading-mode")) return;
+  scheduleSaveProgress();
+}, { passive: true });
+
+$("reader-back").addEventListener("click", closeReader);
+$("reader-toc-btn").addEventListener("click", () => {
+  $("reader-toc").classList.toggle("hidden");
+});
+$("reader-font-up").addEventListener("click", () => {
+  fontScale = Math.min(1.6, Math.round((fontScale + 0.1) * 10) / 10);
+  applyFontScale();
+});
+$("reader-font-down").addEventListener("click", () => {
+  fontScale = Math.max(0.85, Math.round((fontScale - 0.1) * 10) / 10);
+  applyFontScale();
+});
+
 async function bootFromURL() {
   const params = new URLSearchParams(location.search);
+  const read = params.get("read");
   const book = params.get("book");
   const author = params.get("author");
   const series = params.get("series");
+  const lists = params.get("lists");
   const q = params.get("q") || "";
   qInput.value = q;
 
+  if (read) {
+    await openReader(read);
+    return;
+  }
+  if (lists && currentUser) {
+    await openLists(lists);
+    return;
+  }
   if (author && !book) {
     await openAuthor(author);
     return;
@@ -368,6 +606,7 @@ async function bootFromURL() {
     return;
   }
   show("home");
+  await loadContinue();
 }
 
 async function loadUsers() {
@@ -417,7 +656,10 @@ $("nav-home").addEventListener("click", (e) => {
   lastQuery = "";
   qInput.value = "";
   show("home");
+  loadContinue();
 });
+
+$("nav-lists").addEventListener("click", () => openLists(shelfTab));
 
 $("users-btn").addEventListener("click", () => {
   history.pushState({ users: true }, "", "/?users=1");
@@ -427,6 +669,7 @@ $("users-btn").addEventListener("click", () => {
 $("users-back").addEventListener("click", () => {
   history.replaceState(null, "", "/");
   show("home");
+  loadContinue();
 });
 
 $("user-form").addEventListener("submit", async (e) => {
@@ -455,6 +698,7 @@ $("user-form").addEventListener("submit", async (e) => {
 (async function boot() {
   if (!(await loadSession())) return;
   await loadStats();
+  applyFontScale();
   const params = new URLSearchParams(location.search);
   if (params.get("users") === "1" && currentUser?.role === "admin") {
     await loadUsers();

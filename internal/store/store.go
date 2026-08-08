@@ -74,6 +74,8 @@ type BookDetails struct {
 	City        string      `json:"city,omitempty"`
 	PubYear     string      `json:"pubYear,omitempty"`
 	ISBN        string      `json:"isbn,omitempty"`
+	ShelfStatus string      `json:"shelfStatus,omitempty"`
+	Progress    float64     `json:"progress,omitempty"`
 	File        string      `json:"file"`
 	Folder      string      `json:"folder"`
 }

@@ -16,11 +16,12 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header class="top">
+  <header class="top" id="site-header">
     <div class="top-left">
       <a class="brand" href="/">Моя полка</a>
       <nav class="nav" aria-label="Основное">
         <a href="/" class="nav-link is-active" id="nav-home">Главная</a>
+        <button type="button" class="nav-link hidden" id="nav-lists">Списки</button>
         <button type="button" class="nav-link hidden" id="users-btn">Пользователи</button>
       </nav>
     </div>
@@ -37,11 +38,17 @@
     </div>
   </header>
 
-  <main>
+  <main id="site-main">
     <section id="home" class="panel">
       <p id="stats" class="stats"></p>
       <h1>Личная библиотека</h1>
       <p class="lead">Поиск сразу по автору, названию и серии. По умолчанию только книги на русском.</p>
+      <div id="continue-block" class="continue-block hidden">
+        <div class="section-head">
+          <h2>Продолжить чтение</h2>
+        </div>
+        <div id="continue-grid" class="grid"></div>
+      </div>
     </section>
 
     <section id="results" class="panel hidden">
@@ -67,9 +74,29 @@
           <p id="book-info" class="info"></p>
           <p id="book-genres" class="genres"></p>
           <div id="book-annotation" class="annotation hidden"></div>
-          <a id="book-download" class="btn" href="#">Скачать FB2</a>
+          <div class="book-actions">
+            <button type="button" id="book-read" class="btn">Читать</button>
+            <a id="book-download" class="btn btn-secondary" href="#">Скачать FB2</a>
+          </div>
+          <div id="shelf-controls" class="shelf-controls hidden">
+            <button type="button" class="shelf-pill" data-status="reading">Читаю</button>
+            <button type="button" class="shelf-pill" data-status="read">Прочитано</button>
+            <button type="button" class="shelf-pill" data-status="want">Хочу</button>
+            <button type="button" class="shelf-pill shelf-clear" data-status="">Убрать</button>
+          </div>
         </div>
       </div>
+    </section>
+
+    <section id="lists" class="panel hidden">
+      <h2>Списки</h2>
+      <div class="shelf-tabs" id="shelf-tabs">
+        <button type="button" class="shelf-pill is-active" data-status="reading">Читаю</button>
+        <button type="button" class="shelf-pill" data-status="read">Прочитано</button>
+        <button type="button" class="shelf-pill" data-status="want">Хочу</button>
+      </div>
+      <div id="lists-grid" class="grid"></div>
+      <p id="lists-empty" class="empty hidden">Пока пусто</p>
     </section>
 
     <section id="users" class="panel hidden">
@@ -93,6 +120,21 @@
       </table>
     </section>
   </main>
+
+  <div id="reader" class="reader hidden">
+    <header class="reader-bar">
+      <button type="button" id="reader-back" class="text-btn">← Назад</button>
+      <div class="reader-title" id="reader-title"></div>
+      <div class="reader-tools">
+        <button type="button" id="reader-toc-btn" class="text-btn">Оглавление</button>
+        <button type="button" id="reader-font-down" class="icon-btn" title="Мельче" aria-label="Мельче">A−</button>
+        <button type="button" id="reader-font-up" class="icon-btn" title="Крупнее" aria-label="Крупнее">A+</button>
+        <button type="button" class="icon-btn" data-theme-toggle title="Тема" aria-label="Тема">☾</button>
+      </div>
+    </header>
+    <aside id="reader-toc" class="reader-toc hidden"></aside>
+    <article id="reader-content" class="reader-content"></article>
+  </div>
 
   <script src="/theme.js"></script>
   <script src="/app.js"></script>
