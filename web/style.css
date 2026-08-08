@@ -20,6 +20,9 @@
   --pill-radius: 999px;
   --control-height: 44px;
   --control-pad-x: 1rem;
+  --top-control-height: 36px;
+  --top-radius: 10px;
+  --top-font: 0.875rem;
   --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --header-bg: rgba(255, 253, 248, 0.92);
 }
@@ -66,12 +69,12 @@ body {
 .top {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.55rem 0.9rem;
+  gap: 0.65rem 1rem;
   align-items: center;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 0.45rem 1.15rem;
+  padding: 0.55rem 1.25rem;
   border-bottom: 1px solid var(--line);
   background: var(--header-bg);
   backdrop-filter: blur(8px);
@@ -85,27 +88,32 @@ body {
 .top-left {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 1rem;
   min-width: 0;
 }
 
 .nav {
   display: flex;
   align-items: center;
-  gap: 0.1rem;
+  gap: 0.2rem;
 }
 
 .nav-link {
   appearance: none;
-  border: 0;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--top-control-height);
+  border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: var(--top-font);
   font-weight: 600;
   line-height: 1;
-  padding: 0.4rem 0.75rem;
-  border-radius: var(--pill-radius);
+  padding: 0 0.85rem;
+  border-radius: var(--top-radius);
   text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
@@ -113,17 +121,19 @@ body {
 
 .nav-link:hover {
   color: var(--ink);
+  background: color-mix(in srgb, var(--line) 35%, transparent);
 }
 
 .nav-link.is-active {
-  background: var(--ink);
-  color: var(--card);
+  background: var(--card);
+  border-color: var(--line);
+  color: var(--ink);
 }
 
 .top-right {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.65rem;
   white-space: nowrap;
   margin-left: 0;
 }
@@ -131,12 +141,12 @@ body {
 .user-box {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.55rem;
 }
 
 .user-label {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--top-font);
   font-weight: 600;
 }
 
@@ -149,50 +159,58 @@ body {
   color: var(--ink);
   cursor: pointer;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--top-font);
   font-weight: 600;
 }
 
 .icon-btn {
-  width: 32px;
-  height: 32px;
+  box-sizing: border-box;
+  width: var(--top-control-height);
+  height: var(--top-control-height);
   border: 1px solid var(--line);
-  border-radius: var(--pill-radius);
+  border-radius: var(--top-radius);
   background: var(--card);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 500;
   color: var(--ink);
 }
 
-.icon-btn:hover,
+.icon-btn:hover {
+  background: color-mix(in srgb, var(--line) 35%, var(--card));
+}
+
 .text-btn:hover { opacity: 0.8; }
 
 .brand {
-  font-weight: 800;
-  font-size: 1rem;
+  font-weight: 750;
+  font-size: 1.05rem;
+  line-height: 1;
   color: var(--ink);
   text-decoration: none;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   white-space: nowrap;
 }
 
 .search {
   display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  flex: 1 1 200px;
-  max-width: 340px;
+  align-items: stretch;
+  flex: 1 1 220px;
+  max-width: 380px;
   min-width: 0;
   width: auto;
+  height: var(--top-control-height);
   margin-left: auto;
   box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: var(--top-radius);
+  background: var(--card);
+  overflow: hidden;
 }
 
 .field,
-.search input,
 .login-card input,
 .user-form input,
 .user-form select {
@@ -210,13 +228,21 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
-  height: 34px;
-  border-radius: var(--pill-radius);
-  padding: 0 0.9rem;
-  font-size: 0.88rem;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0.85rem;
+  font: inherit;
+  font-size: var(--top-font);
+  background: transparent;
+  color: var(--ink);
   /* iOS Safari adds extra chrome on type=search that can overflow the row. */
   -webkit-appearance: none;
   appearance: none;
+}
+
+.search input::placeholder {
+  color: var(--muted);
 }
 
 .search input::-webkit-search-decoration,
@@ -246,16 +272,22 @@ body {
 }
 
 .search button {
-  height: 34px;
+  flex: 0 0 auto;
+  height: auto;
+  align-self: stretch;
   padding: 0 0.95rem;
-  border-radius: var(--pill-radius);
-  background: color-mix(in srgb, var(--line) 70%, var(--card));
-  color: var(--ink);
-  font-size: 0.82rem;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--top-font);
 }
 
 .search button:hover {
-  filter: brightness(0.97);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--line) 40%, transparent);
+  filter: none;
 }
 
 .btn:hover,
@@ -786,6 +818,7 @@ body.reading-mode {
 
 @media (max-width: 960px) {
   .top {
+    --top-control-height: 40px;
     padding-left: max(0.85rem, env(safe-area-inset-left));
     padding-right: max(0.85rem, env(safe-area-inset-right));
   }
@@ -806,13 +839,6 @@ body.reading-mode {
   .user-form input,
   .user-form select {
     font-size: 16px;
-  }
-  .search input {
-    height: 40px;
-  }
-  .search button {
-    height: 40px;
-    flex: 0 0 auto;
   }
 }
 
