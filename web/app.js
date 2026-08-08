@@ -356,7 +356,7 @@ async function loadUsers() {
     if (!currentUser || u.id !== currentUser.id) {
       const del = document.createElement("button");
       del.type = "button";
-      del.className = "linkish inline";
+      del.className = "text-btn";
       del.textContent = "Удалить";
       del.addEventListener("click", async () => {
         if (!confirm(`Удалить ${u.username}?`)) return;

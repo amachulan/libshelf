@@ -14,11 +14,11 @@
       <button type="submit">Найти</button>
     </form>
     <div class="top-right">
-      <div id="stats" class="stats"></div>
+      <span id="stats" class="stats"></span>
       <div id="user-box" class="user-box hidden">
-        <span id="user-label"></span>
-        <button type="button" id="users-btn" class="linkish inline hidden">Пользователи</button>
-        <button type="button" id="logout-btn" class="linkish inline">Выйти</button>
+        <span id="user-label" class="user-label"></span>
+        <button type="button" id="users-btn" class="text-btn hidden">Пользователи</button>
+        <button type="button" id="logout-btn" class="text-btn">Выйти</button>
       </div>
     </div>
   </header>
@@ -59,13 +59,13 @@
       <button type="button" id="users-back" class="linkish">← Назад</button>
       <h2>Пользователи</h2>
       <form id="user-form" class="user-form">
-        <input id="new-username" placeholder="Логин" required>
-        <input id="new-password" type="password" placeholder="Пароль" required>
-        <select id="new-role">
+        <input id="new-username" class="field" placeholder="Логин" required>
+        <input id="new-password" class="field" type="password" placeholder="Пароль" required>
+        <select id="new-role" class="field">
           <option value="reader">Читатель</option>
           <option value="admin">Админ</option>
         </select>
-        <button type="submit">Добавить</button>
+        <button type="submit" class="btn">Добавить</button>
       </form>
       <p id="users-error" class="error hidden"></p>
       <table class="users-table">

@@ -8,6 +8,9 @@
   --accent-ink: #fff;
   --shadow: 0 10px 30px rgba(28, 26, 23, 0.08);
   --radius: 14px;
+  --control-radius: 12px;
+  --control-height: 44px;
+  --control-pad-x: 1rem;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -23,12 +26,12 @@ body {
 
 .top {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 1rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem 1.25rem;
   align-items: center;
-  padding: 1rem 1.5rem;
+  padding: 0.9rem 1.5rem;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 253, 248, 0.85);
+  background: rgba(255, 253, 248, 0.9);
   backdrop-filter: blur(8px);
   position: sticky;
   top: 0;
@@ -37,25 +40,36 @@ body {
 
 .top-right {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.85rem;
+  justify-self: end;
+  white-space: nowrap;
 }
 
 .user-box {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
   align-items: center;
-  justify-content: flex-end;
-  font-size: 0.9rem;
-  color: var(--muted);
+  gap: 0.65rem;
 }
 
-.linkish.inline {
-  margin: 0;
+.user-label {
+  color: var(--muted);
   font-size: 0.9rem;
 }
+
+.text-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.text-btn:hover { opacity: 0.8; }
 
 .brand {
   font-weight: 700;
@@ -74,32 +88,56 @@ body {
   justify-self: center;
 }
 
-.search input {
-  flex: 1;
+.field,
+.search input,
+.login-card input,
+.user-form input,
+.user-form select {
+  height: var(--control-height);
   border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0.75rem 1.1rem;
+  border-radius: var(--control-radius);
+  padding: 0 var(--control-pad-x);
+  font: inherit;
   font-size: 1rem;
   background: var(--card);
+  color: var(--ink);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
 }
 
 .search button,
-.btn {
+.btn,
+.login-card button,
+.user-form .btn {
+  height: var(--control-height);
   border: 0;
-  border-radius: 999px;
-  padding: 0.75rem 1.2rem;
+  border-radius: var(--control-radius);
+  padding: 0 1.2rem;
   background: var(--accent);
   color: var(--accent-ink);
+  font: inherit;
   font-weight: 600;
   cursor: pointer;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.search button:hover,
+.btn:hover,
+.login-card button:hover,
+.user-form .btn:hover {
+  filter: brightness(1.05);
 }
 
 .stats {
   color: var(--muted);
   font-size: 0.9rem;
-  white-space: nowrap;
 }
 
 main {
@@ -180,7 +218,7 @@ main {
   width: 220px;
   height: 320px;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: var(--control-radius);
   background: #e7dfd0;
 }
 
@@ -210,7 +248,7 @@ main {
   padding: 0.9rem 1rem;
   background: #f7f1e6;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--control-radius);
   color: var(--ink);
   line-height: 1.55;
   max-width: 42rem;
@@ -262,42 +300,37 @@ main {
   display: block;
   width: 100%;
   margin-top: 0.35rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 0.7rem 0.85rem;
-  font: inherit;
-  background: #fff;
 }
 .login-card button {
   width: 100%;
-  margin-top: 0.6rem;
-  border: 0;
-  border-radius: 999px;
-  padding: 0.8rem 1.2rem;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-  cursor: pointer;
+  margin-top: 0.75rem;
 }
 .error {
   color: #8a2b2b;
   background: #f8e8e8;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   padding: 0.55rem 0.75rem;
   font-size: 0.9rem;
 }
 .user-form {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 1rem 0;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 1rem 0 1.25rem;
 }
-.user-form input, .user-form select {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 0.6rem 0.75rem;
-  font: inherit;
-  background: var(--card);
+.user-form .field {
+  min-width: 140px;
+}
+.user-form select.field {
+  min-width: 150px;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
 }
 .users-table {
   width: 100%;
@@ -309,22 +342,39 @@ main {
 }
 .users-table th, .users-table td {
   text-align: left;
-  padding: 0.7rem 0.85rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--line);
+}
+.users-table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 .users-table tr:last-child td { border-bottom: 0; }
 .users-table .actions { text-align: right; }
 
-@media (max-width: 720px) {
+@media (max-width: 860px) {
   .top {
     grid-template-columns: 1fr;
   }
-  .top-right { align-items: flex-start; }
+  .search { justify-self: stretch; max-width: none; }
+  .top-right {
+    justify-self: stretch;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 720px) {
   .book-card {
     grid-template-columns: 1fr;
   }
   .cover-wrap img {
     width: 160px;
     height: 240px;
+  }
+  .user-form .field,
+  .user-form .btn {
+    flex: 1 1 100%;
   }
 }
