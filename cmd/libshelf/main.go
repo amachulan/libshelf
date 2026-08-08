@@ -11,6 +11,7 @@ import (
 	"libshelf/internal/auth"
 	"libshelf/internal/server"
 	"libshelf/internal/store"
+	"libshelf/internal/version"
 )
 
 func main() {
@@ -26,6 +27,8 @@ func main() {
 		runServe(os.Args[2:])
 	case "user":
 		runUser(os.Args[2:])
+	case "version", "-version", "--version":
+		fmt.Println(version.Commit)
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -42,6 +45,7 @@ Usage:
   libshelf import --inpx FILE --library-dir DIR --data-dir DIR [--replace]
   libshelf serve  --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none]
   libshelf user add --data-dir DIR --username NAME --password PASS [--role admin|reader]
+  libshelf version
 
 `)
 }
@@ -137,7 +141,7 @@ func runServe(args []string) {
 		LibDir:       *libDir,
 		CoverDir:     coverDir,
 	})
-	log.Printf("listening on http://%s (%d books, auth=%s)", *addr, n, mode)
+	log.Printf("listening on http://%s (%d books, auth=%s, commit=%s)", *addr, n, mode, version.Short())
 	if err := srv.ListenAndServe(*addr); err != nil {
 		log.Fatal(err)
 	}

@@ -21,6 +21,7 @@ import (
 	"libshelf/internal/fb2"
 	"libshelf/internal/genres"
 	"libshelf/internal/store"
+	"libshelf/internal/version"
 	"libshelf/web"
 )
 
@@ -105,8 +106,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/cover/", s.handleCover)
 	s.mux.HandleFunc("/download/", s.handleDownload)
 	s.mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok " + version.Commit + "\n"))
 	})
 	s.mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

@@ -35,8 +35,11 @@ sudo chmod +x /opt/libshelf/deploy.sh
 sudo /opt/libshelf/deploy.sh
 ```
 
-Скрипт скачивает `latest`, подменяет `/opt/libshelf/libshelf`, перезапускает `screen`.  
+Скрипт ждёт, пока Actions опубликует **текущий** commit в release `latest`, скачивает бинарник, сверяет `libshelf version` с SHA и только потом перезапускает `screen`.  
+Так не ставится «предыдущая» сборка, если деплой запустить раньше, чем дособирался CI.  
 Базу и inpx **не трогает**.
+
+Проверка, что на сервере нужная версия: `curl -s http://127.0.0.1:12380/health` → `ok <git-sha>`.
 
 Переменные окружения (опционально): `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users`|`none`).
 

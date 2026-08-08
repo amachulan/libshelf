@@ -21,8 +21,10 @@ jobs:
       - name: Build linux amd64
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-            go build -trimpath -ldflags="-s -w" \
+            go build -trimpath \
+            -ldflags="-s -w -X libshelf/internal/version.Commit=${GITHUB_SHA}" \
             -o libshelf-linux-amd64 ./cmd/libshelf
+          ./libshelf-linux-amd64 version | grep -q "${GITHUB_SHA}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -35,11 +37,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          NOTES="commit ${GITHUB_SHA}"
           if gh release view latest >/dev/null 2>&1; then
             gh release upload latest libshelf-linux-amd64 --clobber
+            gh release edit latest --notes "$NOTES" --title "Latest (${GITHUB_SHA::7})"
           else
             gh release create latest libshelf-linux-amd64 \
-              --title "Latest" \
-              --notes "Auto-built from master. Use scripts/deploy.sh on the server." \
+              --title "Latest (${GITHUB_SHA::7})" \
+              --notes "$NOTES" \
               --prerelease
           fi
