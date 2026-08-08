@@ -3,9 +3,21 @@ const errorEl = document.getElementById("error");
 const userInput = document.getElementById("username");
 const passInput = document.getElementById("password");
 
-if (new URLSearchParams(location.search).get("switch") === "1") {
-  errorEl.textContent = "Предыдущая сессия сброшена — войдите снова";
-  errorEl.classList.remove("hidden");
+async function fetchMe() {
+  const res = await fetch("/api/me?_=" + Date.now(), {
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  });
+  if (res.status === 401) return null;
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.auth && data.user ? data.user : null;
+}
+
+// Clean up diagnostic redirect flag from older builds.
+if (location.search) {
+  history.replaceState(null, "", "/login.html");
 }
 
 form.addEventListener("submit", async (e) => {
@@ -20,7 +32,7 @@ form.addEventListener("submit", async (e) => {
 
   try {
     // Drop any leftover admin/reader cookie before switching accounts.
-    await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
+    await fetch("/api/logout", { method: "POST", credentials: "same-origin", cache: "no-store" });
     const res = await fetch("/api/login", {
       method: "POST",
       credentials: "same-origin",
@@ -37,10 +49,19 @@ form.addEventListener("submit", async (e) => {
     if (!user || !user.username || user.username.toLowerCase() !== username.toLowerCase()) {
       errorEl.textContent = "Сервер вернул другого пользователя — попробуйте ещё раз";
       errorEl.classList.remove("hidden");
-      await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
+      await fetch("/api/logout", { method: "POST", credentials: "same-origin", cache: "no-store" });
       return;
     }
-    sessionStorage.setItem("libshelf_login_as", user.username);
+    // Confirm the browser actually attached the new session (not a stale cached /api/me).
+    const me = await fetchMe();
+    if (!me || String(me.username).toLowerCase() !== username.toLowerCase()) {
+      errorEl.textContent = me
+        ? `Сессия осталась как «${me.username}». Очистите cookies для сайта и войдите снова.`
+        : "Сессия не установилась — очистите cookies для сайта и войдите снова.";
+      errorEl.classList.remove("hidden");
+      await fetch("/api/logout", { method: "POST", credentials: "same-origin", cache: "no-store" });
+      return;
+    }
     location.replace("/");
   } finally {
     userInput.readOnly = false;

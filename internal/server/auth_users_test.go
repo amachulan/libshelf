@@ -185,7 +185,7 @@ func TestLoginSwitchDropsStaleSessionCookie(t *testing.T) {
 	}
 
 	meReq, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/me", nil)
-	// Browser may still send the old cookie alongside the new one.
+	// Browser may still send the old cookie alongside the new one; last valid wins.
 	meReq.AddCookie(adminCookie)
 	meReq.AddCookie(testCookie)
 	meRes, err := http.DefaultClient.Do(meReq)
@@ -197,10 +197,7 @@ func TestLoginSwitchDropsStaleSessionCookie(t *testing.T) {
 	if meRes.StatusCode != http.StatusOK {
 		t.Fatalf("me %d: %s", meRes.StatusCode, meBody)
 	}
-	if !bytes.Contains(meBody, []byte(`"test"`)) {
+	if !bytes.Contains(meBody, []byte(`"username":"test"`)) {
 		t.Fatalf("expected session user test, got %s", meBody)
-	}
-	if bytes.Contains(meBody, []byte(`"admin"`)) {
-		t.Fatalf("stale admin session won: %s", meBody)
 	}
 }

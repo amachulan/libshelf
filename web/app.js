@@ -38,7 +38,12 @@ async function api(url, opts = {}) {
 }
 
 async function loadSession() {
-  const res = await fetch("/api/me", { credentials: "same-origin" });
+  sessionStorage.removeItem("libshelf_login_as");
+  const res = await fetch("/api/me?_=" + Date.now(), {
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  });
   if (res.status === 401) {
     location.href = "/login.html";
     return false;
@@ -46,15 +51,6 @@ async function loadSession() {
   if (!res.ok) return true;
   const data = await res.json();
   if (data.auth && data.user) {
-    const expected = sessionStorage.getItem("libshelf_login_as");
-    if (expected && expected.toLowerCase() !== String(data.user.username || "").toLowerCase()) {
-      // Stale duplicate cookies can keep the previous user; force a clean re-login.
-      sessionStorage.removeItem("libshelf_login_as");
-      await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
-      location.replace("/login.html?switch=1");
-      return false;
-    }
-    sessionStorage.removeItem("libshelf_login_as");
     currentUser = data.user;
     $("user-box").classList.remove("hidden");
     $("nav-lists").classList.remove("hidden");

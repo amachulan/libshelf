@@ -57,15 +57,19 @@ func (s *Server) resolveUser(r *http.Request) *auth.User {
 		return nil
 	}
 	// Cookie session wins for the web UI. Browsers may send duplicate cookies
-	// (Secure vs non-Secure) after proxy/header flips — try every value.
+	// after proxy/header flips — prefer the last valid one (usually the newest login).
 	name := auth.CookieName()
+	var found *auth.User
 	for _, c := range r.Cookies() {
 		if c.Name != name || c.Value == "" {
 			continue
 		}
 		if u, err := s.auth.UserByToken(c.Value); err == nil {
-			return u
+			found = u
 		}
+	}
+	if found != nil {
+		return found
 	}
 	// Basic Auth is only for OPDS clients. Browsers often cache realm credentials
 	// after a 401 and would otherwise silently re-login as that user on / and /api/*.
