@@ -675,12 +675,18 @@ html.boot-reader body {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.reader-tools .reader-ico-pages {
+.reader-tools .reader-ico-pages,
+.reader-tools .reader-ico-scroll {
   fill: none;
 }
-.reader-tools .reader-ico-pages rect {
+.reader-tools .reader-ico-pages rect,
+.reader-tools .reader-ico-scroll rect {
   fill: color-mix(in srgb, var(--card) 55%, transparent);
   stroke: currentColor;
+}
+.reader-tools .reader-ico-scroll rect:last-child {
+  fill: currentColor;
+  stroke: none;
 }
 
 .reader-content {
