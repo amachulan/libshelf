@@ -2,7 +2,19 @@
 # Deploy libshelf binary built from current master (GitHub pre-release "latest").
 # Waits for CI to publish that commit — avoids installing the previous build.
 # Does NOT re-import inpx / touch the SQLite DB.
+#
+# Site-local settings: put exports in /opt/libshelf/deploy.env (not overwritten
+# when this script is re-downloaded). Override path with LIBSHELF_ENV.
 set -euo pipefail
+
+ENV_FILE="${LIBSHELF_ENV:-/opt/libshelf/deploy.env}"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  set -a
+  # shellcheck source=/dev/null
+  source "$ENV_FILE"
+  set +a
+fi
 
 REPO="${LIBSHELF_REPO:-amachulan/libshelf}"
 BIN="${LIBSHELF_BIN:-/opt/libshelf/libshelf}"

@@ -236,10 +236,17 @@ sudo mkdir -p /opt/libshelf
 sudo curl -fsSL -o /opt/libshelf/deploy.sh \
   https://raw.githubusercontent.com/amachulan/libshelf/master/scripts/deploy.sh
 sudo chmod +x /opt/libshelf/deploy.sh
+
+# Локальные пути — в deploy.env (не затирается при обновлении deploy.sh):
+sudo tee /opt/libshelf/deploy.env <<'EOF'
+LIBSHELF_LIB="/mnt/share/Книги/fb2.Flibusta.Net"
+LIBSHELF_LIB_EXTRA="/mnt/share/Книги/fb2.Flibusta.Net.2"
+EOF
+
 sudo /opt/libshelf/deploy.sh
 ```
 
-Переменные (опционально): `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_LIB_EXTRA` (доп. каталоги архивов через `:`), `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users`|`none`), `LIBSHELF_DEPLOY_WAIT`.
+Скрипт сам подхватывает `/opt/libshelf/deploy.env` (или путь из `LIBSHELF_ENV`). Переменные окружения по-прежнему можно задать и вручную: `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_LIB_EXTRA` (доп. каталоги через `:`), `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users`|`none`), `LIBSHELF_LANGUAGES`, `LIBSHELF_DEPLOY_WAIT`.
 
 Импорт и базу скрипт **не** трогает — только бинарник и перезапуск `serve`.
 
