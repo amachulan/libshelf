@@ -29,6 +29,7 @@ let readerSaveTimer = null;
 let restorePosition = 0;
 let fontScale = Number(localStorage.getItem("libshelf_font") || "1");
 let readMode = localStorage.getItem("libshelf_read_mode") === "pages" ? "pages" : "scroll";
+let textAlign = localStorage.getItem("libshelf_align") === "left" ? "left" : "justify";
 let readerPageIndex = 0;
 /** Y offsets (px into #reader-content) where each page starts — snapped to line bottoms. */
 let readerPageOffsets = [0];
@@ -537,14 +538,40 @@ function applyReadMode() {
   lockPageScroll(paging);
   const btn = $("reader-mode-btn");
   if (btn) {
-    btn.textContent = readMode === "pages" ? "Лента" : "Страницы";
+    const pagesIco = btn.querySelector(".reader-ico-pages");
+    const scrollIco = btn.querySelector(".reader-ico-scroll");
+    pagesIco?.classList.toggle("hidden", readMode !== "pages");
+    scrollIco?.classList.toggle("hidden", readMode === "pages");
     btn.title = readMode === "pages" ? "Сплошной текст" : "Листать страницами";
+    btn.setAttribute("aria-label", btn.title);
   }
   localStorage.setItem("libshelf_read_mode", readMode);
   const el = readerContentEl();
   if (el) {
     el.style.columnWidth = "";
     if (!paging) clearPageTransform(el);
+  }
+}
+
+function applyTextAlign() {
+  const justify = textAlign === "justify";
+  document.body.classList.toggle("reader-align-justify", justify);
+  const btn = $("reader-align-btn");
+  if (btn) {
+    btn.querySelector(".reader-ico-justify")?.classList.toggle("hidden", !justify);
+    btn.querySelector(".reader-ico-left")?.classList.toggle("hidden", justify);
+    btn.title = justify ? "По левому краю" : "По ширине";
+    btn.setAttribute("aria-label", btn.title);
+  }
+  localStorage.setItem("libshelf_align", textAlign);
+}
+
+function setTextAlign(mode) {
+  textAlign = mode === "left" ? "left" : "justify";
+  const pos = readerBookId && pageModeActive() ? readerPosition() : null;
+  applyTextAlign();
+  if (pos != null) {
+    requestAnimationFrame(() => restoreReaderPosition(pos));
   }
 }
 
@@ -1059,6 +1086,9 @@ $("reader-back").addEventListener("click", closeReader);
 $("reader-mode-btn").addEventListener("click", () => {
   setReadMode(readMode === "pages" ? "scroll" : "pages");
 });
+$("reader-align-btn").addEventListener("click", () => {
+  setTextAlign(textAlign === "justify" ? "left" : "justify");
+});
 $("reader-page-prev").addEventListener("click", () => flipReaderPage(-1));
 $("reader-page-next").addEventListener("click", () => flipReaderPage(1));
 $("reader-font-up").addEventListener("click", () => {
@@ -1291,6 +1321,8 @@ $("user-form").addEventListener("submit", async (e) => {
   if (!(await loadSession())) return;
   if (!readId) await loadStats();
   applyFontScale();
+  applyTextAlign();
+  applyReadMode();
   if (params.get("users") === "1" && currentUser?.role === "admin") {
     await loadUsers();
     return;

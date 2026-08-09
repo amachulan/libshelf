@@ -665,12 +665,46 @@ html.boot-reader body {
   display: none;
 }
 
+.reader-tools .reader-ico {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.reader-tools .reader-ico-pages {
+  fill: none;
+}
+.reader-tools .reader-ico-pages rect {
+  fill: color-mix(in srgb, var(--card) 55%, transparent);
+  stroke: currentColor;
+}
+
 .reader-content {
   max-width: 42rem;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 4rem;
   line-height: 1.7;
   font-size: 1rem;
+  text-align: left;
+  hyphens: manual;
+}
+
+body.reader-align-justify .reader-content {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  hyphenate-limit-chars: 6 3 3;
+}
+
+body.reader-align-justify .reader-content .chapter,
+body.reader-align-justify .reader-content h3,
+body.reader-align-justify .reader-content .fb2-img {
+  text-align: start;
+  hyphens: none;
 }
 
 .reader-content .chapter {

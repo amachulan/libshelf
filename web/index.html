@@ -159,7 +159,23 @@
       <button type="button" id="reader-back" class="icon-btn" title="Назад" aria-label="Назад">←</button>
       <div class="reader-title" id="reader-title"></div>
       <div class="reader-tools">
-        <button type="button" id="reader-mode-btn" class="top-btn" title="Режим чтения" aria-label="Режим чтения">Страницы</button>
+        <button type="button" id="reader-mode-btn" class="icon-btn" title="Режим чтения" aria-label="Режим чтения">
+          <svg class="reader-ico reader-ico-pages" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3.5" y="4" width="9" height="14" rx="1.5"/>
+            <rect x="11.5" y="6" width="9" height="14" rx="1.5"/>
+          </svg>
+          <svg class="reader-ico reader-ico-scroll hidden" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 7h14M5 11h14M5 15h10M5 19h12"/>
+          </svg>
+        </button>
+        <button type="button" id="reader-align-btn" class="icon-btn" title="Выравнивание" aria-label="Выравнивание">
+          <svg class="reader-ico reader-ico-justify" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16M4 11h16M4 15h16M4 19h16"/>
+          </svg>
+          <svg class="reader-ico reader-ico-left hidden" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16M4 11h12M4 15h14M4 19h10"/>
+          </svg>
+        </button>
         <button type="button" id="reader-font-down" class="icon-btn" title="Мельче" aria-label="Мельче">A−</button>
         <button type="button" id="reader-font-up" class="icon-btn" title="Крупнее" aria-label="Крупнее">A+</button>
         <button type="button" id="reader-fs-btn" class="icon-btn" title="На весь экран" aria-label="На весь экран">⛶</button>
