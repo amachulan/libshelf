@@ -35,10 +35,10 @@ func TestFtsQueryFoldsYo(t *testing.T) {
 func TestFtsQueryNameOrderSameTokens(t *testing.T) {
 	a := ftsQuery("кинг стивен")
 	b := ftsQuery("стивен кинг")
-	if a != `"кинг"* "стивен"*` {
+	if a != `"кинг"* AND "стивен"*` {
 		t.Fatalf("a=%q", a)
 	}
-	if b != `"стивен"* "кинг"*` {
+	if b != `"стивен"* AND "кинг"*` {
 		t.Fatalf("b=%q", b)
 	}
 }
