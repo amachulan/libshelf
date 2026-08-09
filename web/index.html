@@ -57,25 +57,25 @@
     <form id="adv-search-form" class="adv-search-form" action="/" method="get">
       <label class="adv-field">
         <span>Название</span>
-        <input id="adv-title" name="title" type="search" enterkeyhint="search" autocomplete="off" placeholder="Любые слова из названия">
+        <input id="adv-title" class="field" name="title" type="search" enterkeyhint="search" autocomplete="off" placeholder="Любые слова из названия">
       </label>
       <label class="adv-field">
         <span>Автор</span>
-        <input id="adv-author" name="author" type="search" enterkeyhint="search" autocomplete="off" placeholder="Фамилия или имя">
+        <input id="adv-author" class="field" name="author" type="search" enterkeyhint="search" autocomplete="off" placeholder="Фамилия или имя">
       </label>
       <label class="adv-field adv-field-year">
         <span>Год издания</span>
-        <span class="adv-year-row">
+        <span class="field-combo">
           <input id="adv-year-from" name="year_from" type="number" inputmode="numeric" min="1" max="2100" placeholder="от" autocomplete="off">
-          <span class="adv-year-sep">—</span>
+          <span class="field-combo-sep" aria-hidden="true">—</span>
           <input id="adv-year-to" name="year_to" type="number" inputmode="numeric" min="1" max="2100" placeholder="до" autocomplete="off">
         </span>
       </label>
       <label class="adv-field adv-field-year">
         <span>Добавлено</span>
-        <span class="adv-year-row">
+        <span class="field-combo">
           <input id="adv-added-from" name="added_from" type="number" inputmode="numeric" min="1" max="2100" placeholder="от" autocomplete="off">
-          <span class="adv-year-sep">—</span>
+          <span class="field-combo-sep" aria-hidden="true">—</span>
           <input id="adv-added-to" name="added_to" type="number" inputmode="numeric" min="1" max="2100" placeholder="до" autocomplete="off">
         </span>
       </label>
@@ -154,7 +154,7 @@
       </div>
       <label class="catalog-filter">
         <span class="sr-only" id="catalog-filter-label">Фильтр каталога</span>
-        <input id="catalog-filter" type="search" enterkeyhint="search" autocomplete="off" placeholder="Начать вводить имя…">
+        <input id="catalog-filter" class="field" type="search" enterkeyhint="search" autocomplete="off" placeholder="Начать вводить имя…">
       </label>
       <div id="catalog-letters" class="letter-strip is-idle" aria-hidden="true"></div>
       <div class="catalog-body">

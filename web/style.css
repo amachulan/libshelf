@@ -225,7 +225,9 @@ body {
 .field,
 .login-card input,
 .user-form input,
-.user-form select {
+.user-form select,
+.adv-field > .field,
+.catalog-filter .field {
   height: var(--control-height);
   border: 1px solid var(--line);
   border-radius: var(--control-radius);
@@ -234,6 +236,40 @@ body {
   font-size: 1rem;
   background: var(--card);
   color: var(--ink);
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.field::placeholder,
+.login-card input::placeholder,
+.user-form input::placeholder,
+.adv-field .field::placeholder,
+.catalog-filter .field::placeholder,
+.field-combo input::placeholder {
+  color: var(--muted);
+}
+
+.field::-webkit-search-decoration,
+.field::-webkit-search-cancel-button,
+.adv-field .field::-webkit-search-decoration,
+.adv-field .field::-webkit-search-cancel-button,
+.catalog-filter .field::-webkit-search-decoration,
+.catalog-filter .field::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.field:focus,
+.login-card input:focus,
+.user-form input:focus,
+.user-form select:focus,
+.adv-field > .field:focus,
+.catalog-filter .field:focus,
+.field-combo:focus-within {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .search input {
@@ -326,24 +362,24 @@ body {
 
 .adv-search {
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--card) 88%, var(--bg));
-  padding: 0.75rem max(1.25rem, env(safe-area-inset-right)) 0.85rem max(1.25rem, env(safe-area-inset-left));
+  background: transparent;
+  padding: 0.85rem max(1.25rem, env(safe-area-inset-right)) 1rem max(1.25rem, env(safe-area-inset-left));
 }
 
 .adv-search-form {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 0.65rem 0.85rem;
-  max-width: 920px;
+  gap: 0.75rem 0.9rem;
+  max-width: 960px;
   margin: 0 auto;
 }
 
 .adv-field {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  flex: 1 1 10rem;
+  gap: 0.35rem;
+  flex: 1 1 11rem;
   min-width: 0;
   font-size: 0.78rem;
   font-weight: 650;
@@ -352,38 +388,60 @@ body {
   color: var(--muted);
 }
 
-.adv-field input {
+.adv-field > .field {
   width: 100%;
-  box-sizing: border-box;
 }
 
 .adv-field-year {
-  flex: 0 1 11rem;
+  flex: 0 1 12rem;
 }
 
-.adv-year-row {
+.field-combo {
   display: flex;
-  align-items: center;
-  gap: 0.35rem;
+  align-items: stretch;
+  height: var(--control-height);
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--card);
+  overflow: hidden;
 }
 
-.adv-year-row input {
+.field-combo input {
   flex: 1 1 0;
   min-width: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0.7rem;
+  font: inherit;
+  font-size: 1rem;
   font-variant-numeric: tabular-nums;
+  background: transparent;
+  color: var(--ink);
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-.adv-year-sep {
+.field-combo input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.field-combo-sep {
+  display: inline-flex;
+  align-items: center;
   color: var(--muted);
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
+  padding: 0 0.1rem;
 }
 
 .adv-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.5rem;
   align-items: center;
   padding-bottom: 1px;
 }
@@ -695,10 +753,9 @@ html.boot-reader body {
   margin: 0.85rem 0 0;
 }
 
-.catalog-filter input {
+.catalog-filter .field {
   width: 100%;
   max-width: 28rem;
-  box-sizing: border-box;
 }
 
 .letter-strip {
@@ -1326,8 +1383,8 @@ body.reader-pages .reader-content .fb2-img {
   }
   /* 16px avoids iOS focus-zoom that shifts the sticky header sideways. */
   .search input,
-  .adv-field input,
   .field,
+  .field-combo input,
   .login-card input,
   .user-form input,
   .user-form select {
@@ -1337,7 +1394,10 @@ body.reader-pages .reader-content .fb2-img {
     max-width: none;
   }
   .adv-field-year {
-    flex: 1 1 100%;
+    flex: 1 1 calc(50% - 0.45rem);
+  }
+  .catalog-filter .field {
+    max-width: none;
   }
 }
 
