@@ -144,8 +144,10 @@ func (s *Store) groupAndPaginate(books []Book, limit, offset int) ([]Book, int, 
 // EditionsForBook returns editions of the same work (title + authors), up to maxEditions.
 func (s *Store) EditionsForBook(bookID int64) ([]EditionRef, error) {
 	var title string
+	lang, langArgs := s.langPred("lang")
+	args := append([]any{bookID}, langArgs...)
 	err := s.db.QueryRow(`
-SELECT title FROM books WHERE id = ? AND deleted = 0 AND lang = 'ru'`, bookID).Scan(&title)
+SELECT title FROM books WHERE id = ? AND deleted = 0`+lang, args...).Scan(&title)
 	if err != nil {
 		return nil, err
 	}
@@ -165,14 +167,16 @@ SELECT title FROM books WHERE id = ? AND deleted = 0 AND lang = 'ru'`, bookID).S
 		rowsBooks = b
 	} else {
 		// Candidate pool: books that share the first author, then filter by workKey.
+		lang, langArgs := s.langPred("b.lang")
+		qargs := append(append([]any{}, langArgs...), authorIDs[0], listGroupCap)
 		rows, err := s.db.Query(`
 SELECT`+bookColumns+`
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
-WHERE b.deleted = 0 AND b.lang = 'ru'
+WHERE b.deleted = 0`+lang+`
   AND b.id IN (SELECT book_id FROM book_authors WHERE author_id = ?)
 ORDER BY b.size DESC, coalesce(b.year, 0) DESC, b.id
-LIMIT ?`, authorIDs[0], listGroupCap)
+LIMIT ?`, qargs...)
 		if err != nil {
 			return nil, fmt.Errorf("editions: %w", err)
 		}

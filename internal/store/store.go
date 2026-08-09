@@ -11,6 +11,7 @@ import (
 
 type Store struct {
 	db       *sql.DB
+	langs    []string // empty = all languages; default ["ru"]
 	catCache catalogCache
 }
 
@@ -21,7 +22,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
+	s := &Store{db: db, langs: []string{"ru"}}
 	if _, err := db.Exec(schemaSQL); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("schema: %w", err)
@@ -33,6 +34,14 @@ func Open(path string) (*Store, error) {
 		}
 	}
 	return s, nil
+}
+
+func (s *Store) invalidateCatalogCache() {
+	s.catCache.mu.Lock()
+	s.catCache.authorLetters = nil
+	s.catCache.seriesLetters = nil
+	s.catCache.genres = nil
+	s.catCache.mu.Unlock()
 }
 
 // EnsureSearchIndexAsync rebuilds the FTS index in the background so serve can
@@ -48,8 +57,10 @@ func (s *Store) EnsureSearchIndexAsync() {
 func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) BookCount() (int, error) {
+	q := `SELECT count(*) FROM books WHERE deleted = 0`
+	lang, args := s.langPred("lang")
 	var n int
-	err := s.db.QueryRow(`SELECT count(*) FROM books WHERE deleted = 0 AND lang = 'ru'`).Scan(&n)
+	err := s.db.QueryRow(q+lang, args...).Scan(&n)
 	return n, err
 }
 
@@ -125,12 +136,14 @@ func (s *Store) scanBook(sc interface{ Scan(dest ...any) error }) (Book, error) 
 }
 
 func (s *Store) GetBook(id int64) (*BookDetails, error) {
+	lang, langArgs := s.langPred("b.lang")
+	args := append([]any{id}, langArgs...)
 	row := s.db.QueryRow(`
 SELECT`+bookColumns+`, b.file, f.name, coalesce(b.series_id, 0)
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
 JOIN folders f ON f.id = b.folder_id
-WHERE b.id = ? AND b.deleted = 0 AND b.lang = 'ru'`, id)
+WHERE b.id = ? AND b.deleted = 0`+lang, args...)
 
 	var d BookDetails
 	err := row.Scan(&d.ID, &d.Title, &d.Authors, &d.Series, &d.SeriesNum,
@@ -183,10 +196,12 @@ WHERE bg.book_id = ?`, id)
 
 func (s *Store) BookFile(id int64) (*BookFile, error) {
 	f := &BookFile{}
+	lang, langArgs := s.langPred("b.lang")
+	args := append([]any{id}, langArgs...)
 	err := s.db.QueryRow(`
 SELECT b.id, b.title, fo.name, b.file, b.ext, b.size
 FROM books b JOIN folders fo ON fo.id = b.folder_id
-WHERE b.id = ? AND b.deleted = 0 AND b.lang = 'ru'`, id).
+WHERE b.id = ? AND b.deleted = 0`+lang, args...).
 		Scan(&f.ID, &f.Title, &f.Folder, &f.File, &f.Ext, &f.Size)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound

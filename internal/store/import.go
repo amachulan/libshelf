@@ -134,6 +134,7 @@ func (s *Store) clearCatalog() error {
 	defer tx.Rollback()
 	for _, q := range []string{
 		`DELETE FROM meta WHERE key = 'search_index_version'`,
+		`DELETE FROM meta WHERE key = 'search_index_langs'`,
 		`DELETE FROM book_genres`,
 		`DELETE FROM book_authors`,
 		`DELETE FROM books`,

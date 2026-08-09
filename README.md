@@ -8,7 +8,7 @@ Self-hosted веб-каталог личной библиотеки: индек�
 
 - поиск по **автору, названию и серии** сразу; **ё/е** и порядок имени не мешают; выдача по релевантности, с **пагинацией**
 - одинаковые книги с разными файлами схлопываются в одно **произведение**, на карточке — выбор **издания / перевода**
-- по умолчанию только книги с **`lang = ru`**
+- языки каталога задаёт **админ** (по умолчанию `ru`; можно несколько или все)
 - карточка книги, обложка из FB2, скачивание FB2
 - **читалка** FB2 в браузере: страницы или лента, выравнивание, полноэкран, прогресс
 - личные списки **Читаю / Прочитано / Хочу**
@@ -250,10 +250,12 @@ libshelf                 (= start)
 libshelf start           [--config FILE] [--addr HOST:PORT] [--no-browser]
 libshelf import          --inpx FILE [--inpx FILE ...] --library-dir DIR --data-dir DIR [--replace|--append]
 libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db PATH) [--library-dir DIR] [--prune-empty-archives] [--dry-run]
-libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
+libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--lang CODE] [--open]
 libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
 libshelf version
 ```
+
+Языки каталога: в мастере setup, в `libshelf.json` (`"languages": ["ru"]` / `["ru","en"]` / `["*"]`), флаг `--lang` (повторяемый) или env `LIBSHELF_LANGUAGES=ru,en`. После смены языков при старте пересоберётся поисковый индекс.
 
 `libshelf.json` (рядом с exe при `start`):
 
@@ -264,6 +266,7 @@ libshelf version
   "data_dir": "C:\\\\LibShelf\\\\data",
   "inpx": "C:\\\\Books\\\\catalog.inpx",
   "auth": "users",
+  "languages": ["ru"],
   "open_browser": true
 }
 ```
@@ -286,7 +289,7 @@ libshelf version
 | GET | `/opds` | OPDS root |
 | GET | `/cover/{id}` | обложка |
 | GET | `/download/{id}` | скачать FB2 |
-| GET | `/api/stats` | число книг (ru) |
+| GET | `/api/stats` | число видимых книг |
 | GET | `/health` | health-check (`ok <sha>`) |
 
 При `--auth=users` большинство `/api/*` требуют сессию (cookie после `/api/login`).

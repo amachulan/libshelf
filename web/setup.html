@@ -52,6 +52,19 @@
           <option value="none">Без пароля (только этот ПК)</option>
         </select>
       </label>
+      <fieldset class="lang-fieldset">
+        <legend>Языки каталога</legend>
+        <p class="muted setup-hint">Какие книги показывать. Можно изменить позже в <code>libshelf.json</code>.</p>
+        <label class="check"><input type="checkbox" name="lang" value="ru" checked> Русский</label>
+        <label class="check"><input type="checkbox" name="lang" value="en"> English</label>
+        <label class="check"><input type="checkbox" name="lang" value="uk"> Українська</label>
+        <label class="check"><input type="checkbox" name="lang" value="be"> Беларуская</label>
+        <label class="check"><input type="checkbox" name="lang" value="bg"> Български</label>
+        <label class="check"><input type="checkbox" name="lang" value="pl"> Polski</label>
+        <label class="check"><input type="checkbox" name="lang" value="de"> Deutsch</label>
+        <label class="check"><input type="checkbox" name="lang" value="fr"> Français</label>
+        <label class="check"><input type="checkbox" name="lang" value="*" id="lang-all"> Все языки</label>
+      </fieldset>
       <p id="error" class="error hidden"></p>
       <p id="status" class="setup-status hidden"></p>
       <div id="credentials" class="setup-creds hidden"></div>

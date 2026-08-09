@@ -78,12 +78,13 @@ func (s *Server) writeSetupStatus(w http.ResponseWriter) {
 		"adminUser":     s.setup.adminUser,
 		"adminPassword": s.setup.adminPassword,
 		"canBrowse":     nativedialog.Available(),
-		"defaults": map[string]string{
+		"defaults": map[string]any{
 			"addr":        cfg.Addr,
 			"library_dir": cfg.LibraryDir,
 			"data_dir":    cfg.DataDir,
 			"inpx":        cfg.INPX,
 			"auth":        cfg.Auth,
+			"languages":   cfg.Languages,
 		},
 	})
 }
@@ -124,11 +125,12 @@ func (s *Server) handleSetupBrowse(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSetupStart(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		INPX       string `json:"inpx"`
-		LibraryDir string `json:"library_dir"`
-		DataDir    string `json:"data_dir"`
-		Auth       string `json:"auth"`
-		Replace    bool   `json:"replace"`
+		INPX       string   `json:"inpx"`
+		LibraryDir string   `json:"library_dir"`
+		DataDir    string   `json:"data_dir"`
+		Auth       string   `json:"auth"`
+		Languages  []string `json:"languages"`
+		Replace    bool     `json:"replace"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
@@ -157,6 +159,10 @@ func (s *Server) handleSetupStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "library_dir not found", http.StatusBadRequest)
 		return
 	}
+	langs := req.Languages
+	if len(langs) == 0 {
+		langs = []string{"ru"}
+	}
 
 	s.setup.mu.Lock()
 	if s.setup.phase == setupImporting {
@@ -171,10 +177,10 @@ func (s *Server) handleSetupStart(w http.ResponseWriter, r *http.Request) {
 	s.setup.mu.Unlock()
 
 	writeJSON(w, map[string]any{"phase": setupImporting})
-	go s.runSetupImport(req.INPX, req.LibraryDir, req.DataDir, req.Auth, req.Replace)
+	go s.runSetupImport(req.INPX, req.LibraryDir, req.DataDir, req.Auth, langs, req.Replace)
 }
 
-func (s *Server) runSetupImport(inpxPath, libraryDir, dataDir, authMode string, replace bool) {
+func (s *Server) runSetupImport(inpxPath, libraryDir, dataDir, authMode string, languages []string, replace bool) {
 	fail := func(msg string) {
 		s.setup.mu.Lock()
 		s.setup.phase = setupError
@@ -210,6 +216,7 @@ func (s *Server) runSetupImport(inpxPath, libraryDir, dataDir, authMode string, 
 		}
 		openedNew = true
 	}
+	st.SetLanguages(appconfig.NormalizeLanguages(languages))
 
 	stats, err := st.ImportINPX(inpxPath, replace)
 	if err != nil {
@@ -257,6 +264,11 @@ func (s *Server) runSetupImport(inpxPath, libraryDir, dataDir, authMode string, 
 	cfg.LibraryDir = libraryDir
 	cfg.DataDir = dataDir
 	cfg.Auth = authMode
+	if n := appconfig.NormalizeLanguages(languages); n == nil {
+		cfg.Languages = []string{"*"}
+	} else {
+		cfg.Languages = n
+	}
 	if cfg.Addr == "" {
 		cfg.Addr = appconfig.Defaults().Addr
 	}

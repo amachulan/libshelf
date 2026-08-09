@@ -44,14 +44,16 @@ FROM authors WHERE id = ?`, authorID).Scan(&name)
 		return nil, err
 	}
 
+	lang, langArgs := s.langPred("b.lang")
+	args := append(append([]any{}, langArgs...), authorID, listGroupCap)
 	rows, err := s.db.Query(`
 SELECT`+bookColumns+`
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
-WHERE b.deleted = 0 AND b.lang = 'ru'
+WHERE b.deleted = 0`+lang+`
   AND b.id IN (SELECT book_id FROM book_authors WHERE author_id = ?)
 ORDER BY coalesce(s.title, ''), b.series_num, b.title
-LIMIT ?`, authorID, listGroupCap)
+LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,13 +90,15 @@ func (s *Store) SeriesBooks(seriesID int64, limit, offset int) (*NamedList, erro
 		return nil, err
 	}
 
+	lang, langArgs := s.langPred("b.lang")
+	args := append(append([]any{}, langArgs...), seriesID, listGroupCap)
 	rows, err := s.db.Query(`
 SELECT`+bookColumns+`
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
-WHERE b.deleted = 0 AND b.lang = 'ru' AND b.series_id = ?
+WHERE b.deleted = 0`+lang+` AND b.series_id = ?
 ORDER BY b.series_num, b.title
-LIMIT ?`, seriesID, listGroupCap)
+LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -135,12 +139,13 @@ func (s *Store) BooksByIDs(ids []int64) ([]Book, error) {
 		placeholders[i] = "?"
 		args[i] = id
 	}
+	lang, langArgs := s.langPred("b.lang")
 	q := `
 SELECT` + bookColumns + `
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
-WHERE b.deleted = 0 AND b.lang = 'ru' AND b.id IN (` + strings.Join(placeholders, ",") + `)`
-	rows, err := s.db.Query(q, args...)
+WHERE b.deleted = 0` + lang + ` AND b.id IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := s.db.Query(q, append(langArgs, args...)...)
 	if err != nil {
 		return nil, err
 	}

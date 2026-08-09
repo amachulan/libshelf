@@ -4,18 +4,21 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const FileName = "libshelf.json"
 
 type Config struct {
-	Addr         string   `json:"addr"`
-	LibraryDir   string   `json:"library_dir"`
-	LibraryDirs  []string `json:"library_dirs,omitempty"`
-	DataDir      string   `json:"data_dir"`
-	INPX         string   `json:"inpx"`
-	Auth         string   `json:"auth"`
-	OpenBrowser  bool     `json:"open_browser"`
+	Addr        string   `json:"addr"`
+	LibraryDir  string   `json:"library_dir"`
+	LibraryDirs []string `json:"library_dirs,omitempty"`
+	DataDir     string   `json:"data_dir"`
+	INPX        string   `json:"inpx"`
+	Auth        string   `json:"auth"`
+	// Languages filters the catalog. Default ["ru"]. Use ["*"] for all languages.
+	Languages  []string `json:"languages"`
+	OpenBrowser bool    `json:"open_browser"`
 }
 
 // AllLibraryDirs returns unique library roots (library_dirs + library_dir).
@@ -63,8 +66,31 @@ func Defaults() Config {
 		DataDir:     filepath.Join(base, "data"),
 		INPX:        "",
 		Auth:        "users",
+		Languages:   []string{"ru"},
 		OpenBrowser: true,
 	}
+}
+
+// NormalizeLanguages returns the language filter for the store.
+// ["*"] / ["all"] / empty explicit list → nil (all languages).
+func NormalizeLanguages(langs []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, raw := range langs {
+		l := strings.ToLower(strings.TrimSpace(raw))
+		if l == "" {
+			continue
+		}
+		if l == "*" || l == "all" {
+			return nil
+		}
+		if _, ok := seen[l]; ok {
+			continue
+		}
+		seen[l] = struct{}{}
+		out = append(out, l)
+	}
+	return out
 }
 
 func Load(path string) (Config, error) {
@@ -76,10 +102,25 @@ func Load(path string) (Config, error) {
 		}
 		return cfg, err
 	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return cfg, err
+	}
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return cfg, err
 	}
 	cfg.applyDefaults()
+	if _, ok := raw["languages"]; !ok {
+		cfg.Languages = []string{"ru"}
+	} else {
+		// Preserve explicit ["*"] or [] as all-languages marker for Save/UI.
+		n := NormalizeLanguages(cfg.Languages)
+		if n == nil {
+			cfg.Languages = []string{"*"}
+		} else {
+			cfg.Languages = n
+		}
+	}
 	return cfg, nil
 }
 
@@ -99,8 +140,16 @@ func (c *Config) applyDefaults() {
 	}
 }
 
+// StoreLanguages returns languages for store.SetLanguages (nil = all).
+func (c Config) StoreLanguages() []string {
+	return NormalizeLanguages(c.Languages)
+}
+
 func (c Config) Save(path string) error {
 	c.applyDefaults()
+	if len(c.Languages) == 0 {
+		c.Languages = []string{"ru"}
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

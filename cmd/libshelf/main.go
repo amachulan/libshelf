@@ -55,7 +55,7 @@ Usage:
   libshelf start           [--config FILE] [--addr HOST:PORT] [--no-browser]
   libshelf import          --inpx FILE [--inpx FILE ...] --library-dir DIR --data-dir DIR [--replace|--append]
   libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db DIR/FILE) [options]
-  libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
+  libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--lang CODE] [--open]
   libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
   libshelf version
 
@@ -123,6 +123,7 @@ func runStart(args []string) {
 		log.Fatal(err)
 	}
 	defer st.Close()
+	st.SetLanguages(cfg.StoreLanguages())
 	st.EnsureSearchIndexAsync()
 
 	n, err := st.TotalBookCount()
@@ -328,7 +329,9 @@ func runDedupe(args []string) {
 func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	var libDirs stringList
+	var langs stringList
 	fs.Var(&libDirs, "library-dir", "directory with book archives (repeatable)")
+	fs.Var(&langs, "lang", "catalog language code (repeatable; default ru; use --lang=* for all)")
 	dataDir := fs.String("data-dir", "", "directory for SQLite database and cover cache")
 	addr := fs.String("addr", "127.0.0.1:12380", "listen address")
 	authMode := fs.String("auth", "users", "auth mode: users (login required) or none")
@@ -342,6 +345,14 @@ func runServe(args []string) {
 	if mode != "users" && mode != "none" {
 		log.Fatal("--auth must be users or none")
 	}
+	langFilter := []string(langs)
+	if len(langFilter) == 0 {
+		if env := strings.TrimSpace(os.Getenv("LIBSHELF_LANGUAGES")); env != "" {
+			langFilter = strings.Split(env, ",")
+		} else {
+			langFilter = []string{"ru"}
+		}
+	}
 
 	dbPath := filepath.Join(*dataDir, "libshelf.db")
 	st, err := store.Open(dbPath)
@@ -349,6 +360,7 @@ func runServe(args []string) {
 		log.Fatal(err)
 	}
 	defer st.Close()
+	st.SetLanguages(appconfig.NormalizeLanguages(langFilter))
 	st.EnsureSearchIndexAsync()
 	n, err := st.BookCount()
 	if err != nil {
@@ -392,8 +404,8 @@ func runServe(args []string) {
 		CoverDir:     coverDir,
 	})
 	url := "http://" + *addr + "/"
-	log.Printf("listening on %s (%d books, auth=%s, lib_dirs=%d, commit=%s)",
-		url, n, mode, len(libDirs), version.Short())
+	log.Printf("listening on %s (%d books, auth=%s, langs=%v, lib_dirs=%d, commit=%s)",
+		url, n, mode, langFilter, len(libDirs), version.Short())
 	if *open {
 		go func() {
 			time.Sleep(350 * time.Millisecond)

@@ -44,15 +44,17 @@ func (s *Store) Search(query string, limit, offset int) ([]Book, int, error) {
 		return nil, 0, nil
 	}
 
+	lang, langArgs := s.langPred("b.lang")
+	args := append(append([]any{}, langArgs...), q, searchCandidateCap)
 	rows, err := s.db.Query(`
 SELECT`+bookColumns+`
 FROM book_search
 JOIN books b ON b.id = book_search.rowid
 LEFT JOIN series s ON s.id = b.series_id
-WHERE b.deleted = 0 AND b.lang = 'ru'
+WHERE b.deleted = 0`+lang+`
   AND book_search MATCH ?
 ORDER BY bm25(book_search, 2.0, 8.0, 4.0), b.title
-LIMIT ?`, q, searchCandidateCap)
+LIMIT ?`, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("search: %w", err)
 	}

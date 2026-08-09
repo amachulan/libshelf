@@ -77,12 +77,13 @@ func nonCyrillicInitialSQL(column string) string {
 )`
 }
 
-func authorHasRUBooksSQL() string {
+func (s *Store) authorHasVisibleBooksSQL() (string, []any) {
+	lang, args := s.langPred("b.lang")
 	return `EXISTS (
   SELECT 1 FROM book_authors ba
-  JOIN books b ON b.id = ba.book_id AND b.deleted = 0 AND b.lang = 'ru'
+  JOIN books b ON b.id = ba.book_id AND b.deleted = 0` + lang + `
   WHERE ba.author_id = a.id
-)`
+)`, args
 }
 
 func (s *Store) AuthorLetters() ([]LetterCount, error) {
@@ -92,11 +93,12 @@ func (s *Store) AuthorLetters() ([]LetterCount, error) {
 		return s.catCache.authorLetters, nil
 	}
 
+	has, hasArgs := s.authorHasVisibleBooksSQL()
 	rows, err := s.db.Query(`
 SELECT upper(replace(substr(trim(a.last_name), 1, 1), 'Ё', 'Е')), count(*)
 FROM authors a
-WHERE ` + authorHasRUBooksSQL() + `
-GROUP BY 1`)
+WHERE `+has+`
+GROUP BY 1`, hasArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -157,9 +159,11 @@ func (s *Store) AuthorsByLetter(letter string, limit, offset int) ([]CatalogPers
 		offset = 0
 	}
 
+	lang, langArgs := s.langPred("b.lang")
+	has, hasArgs := s.authorHasVisibleBooksSQL()
 	bookCount := `(
   SELECT count(*) FROM book_authors ba
-  JOIN books b ON b.id = ba.book_id AND b.deleted = 0 AND b.lang = 'ru'
+  JOIN books b ON b.id = ba.book_id AND b.deleted = 0` + lang + `
   WHERE ba.author_id = a.id
 )`
 	q := `
@@ -167,22 +171,26 @@ SELECT a.id,
        trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name),
        ` + bookCount + `
 FROM authors a
-WHERE ` + authorHasRUBooksSQL() + `
+WHERE ` + has + `
 `
 	var (
 		rows *sql.Rows
 		err  error
 	)
 	if letter == "#" {
+		args := append(append([]any{}, langArgs...), hasArgs...)
+		args = append(args, limit, offset)
 		rows, err = s.db.Query(q+`
 AND `+nonCyrillicInitialSQL("a.last_name")+`
 ORDER BY a.last_name, a.first_name
-LIMIT ? OFFSET ?`, limit, offset)
+LIMIT ? OFFSET ?`, args...)
 	} else {
+		args := append(append([]any{}, langArgs...), hasArgs...)
+		args = append(args, letter, limit, offset)
 		rows, err = s.db.Query(q+`
 AND upper(replace(substr(trim(a.last_name),1,1),'Ё','Е')) = ?
 ORDER BY a.last_name, a.first_name
-LIMIT ? OFFSET ?`, letter, limit, offset)
+LIMIT ? OFFSET ?`, args...)
 	}
 	if err != nil {
 		return nil, err
@@ -198,14 +206,15 @@ func (s *Store) SeriesLetters() ([]LetterCount, error) {
 		return s.catCache.seriesLetters, nil
 	}
 
+	lang, langArgs := s.langPred("b.lang")
 	rows, err := s.db.Query(`
 SELECT upper(replace(substr(trim(s.title), 1, 1), 'Ё', 'Е')), count(*)
 FROM series s
 WHERE EXISTS (
   SELECT 1 FROM books b
-  WHERE b.series_id = s.id AND b.deleted = 0 AND b.lang = 'ru'
+  WHERE b.series_id = s.id AND b.deleted = 0`+lang+`
 )
-GROUP BY 1`)
+GROUP BY 1`, langArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -241,16 +250,17 @@ func (s *Store) SeriesByLetter(letter string, limit, offset int) ([]CatalogSerie
 	if offset < 0 {
 		offset = 0
 	}
+	lang, langArgs := s.langPred("b.lang")
 	bookCount := `(
   SELECT count(*) FROM books b
-  WHERE b.series_id = s.id AND b.deleted = 0 AND b.lang = 'ru'
+  WHERE b.series_id = s.id AND b.deleted = 0` + lang + `
 )`
 	base := `
 SELECT s.id, s.title, ` + bookCount + `
 FROM series s
 WHERE EXISTS (
   SELECT 1 FROM books b
-  WHERE b.series_id = s.id AND b.deleted = 0 AND b.lang = 'ru'
+  WHERE b.series_id = s.id AND b.deleted = 0` + lang + `
 )
 `
 	var (
@@ -258,15 +268,19 @@ WHERE EXISTS (
 		err  error
 	)
 	if letter == "#" {
+		args := append(append([]any{}, langArgs...), langArgs...)
+		args = append(args, limit, offset)
 		rows, err = s.db.Query(base+`
 AND `+nonCyrillicInitialSQL("s.title")+`
 ORDER BY s.title
-LIMIT ? OFFSET ?`, limit, offset)
+LIMIT ? OFFSET ?`, args...)
 	} else {
+		args := append(append([]any{}, langArgs...), langArgs...)
+		args = append(args, letter, limit, offset)
 		rows, err = s.db.Query(base+`
 AND upper(replace(substr(trim(s.title),1,1),'Ё','Е')) = ?
 ORDER BY s.title
-LIMIT ? OFFSET ?`, letter, limit, offset)
+LIMIT ? OFFSET ?`, args...)
 	}
 	if err != nil {
 		return nil, err
@@ -290,12 +304,13 @@ func (s *Store) ListGenres() ([]CatalogGenre, error) {
 		return s.catCache.genres, nil
 	}
 
+	lang, langArgs := s.langPred("b.lang")
 	rows, err := s.db.Query(`
 SELECT g.code, count(*)
 FROM genres g
 JOIN book_genres bg ON bg.genre_id = g.id
-JOIN books b ON b.id = bg.book_id AND b.deleted = 0 AND b.lang = 'ru'
-GROUP BY g.id`)
+JOIN books b ON b.id = bg.book_id AND b.deleted = 0`+lang+`
+GROUP BY g.id`, langArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -344,14 +359,16 @@ func (s *Store) GenreBooks(code string, limit, offset int) (*NamedList, error) {
 	if err != nil {
 		return nil, err
 	}
+	lang, langArgs := s.langPred("b.lang")
+	args := append([]any{genreID}, append(langArgs, listGroupCap)...)
 	rows, err := s.db.Query(`
 SELECT`+bookColumns+`
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
 JOIN book_genres bg ON bg.book_id = b.id AND bg.genre_id = ?
-WHERE b.deleted = 0 AND b.lang = 'ru'
+WHERE b.deleted = 0`+lang+`
 ORDER BY b.title
-LIMIT ?`, genreID, listGroupCap)
+LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}

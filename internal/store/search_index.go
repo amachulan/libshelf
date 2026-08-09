@@ -18,12 +18,23 @@ func (s *Store) setSearchIndexMeta(v string) error {
 	return err
 }
 
-// EnsureSearchIndex rebuilds FTS if missing the current normalization rules.
+func (s *Store) searchLangsMeta() string {
+	var v string
+	_ = s.db.QueryRow(`SELECT value FROM meta WHERE key = 'search_index_langs'`).Scan(&v)
+	return v
+}
+
+func (s *Store) setSearchLangsMeta(v string) error {
+	_, err := s.db.Exec(`INSERT OR REPLACE INTO meta(key, value) VALUES('search_index_langs', ?)`, v)
+	return err
+}
+
+// EnsureSearchIndex rebuilds FTS if missing the current normalization rules or language filter.
 func (s *Store) EnsureSearchIndex() error {
-	if s.searchIndexMeta() == searchIndexVersion {
+	if s.searchIndexMeta() == searchIndexVersion && s.searchLangsMeta() == s.langsKey() {
 		return nil
 	}
-	log.Printf("rebuilding search index (version %s) …", searchIndexVersion)
+	log.Printf("rebuilding search index (version %s, langs=%s) …", searchIndexVersion, s.langsKey())
 	if err := s.RebuildSearchIndex(); err != nil {
 		return err
 	}
@@ -36,7 +47,7 @@ type searchBookRow struct {
 	title, series string
 }
 
-// RebuildSearchIndex refreshes book_search for russian non-deleted books.
+// RebuildSearchIndex refreshes book_search for visible non-deleted books.
 // Books are loaded first, then written — SQLite is limited to one connection,
 // so overlapping Query+Begin deadlocks. Contentless FTS5 cannot DELETE rows,
 // so the table is dropped and recreated.
@@ -91,7 +102,10 @@ ORDER BY a.last_name, a.first_name`)
 	if _, err := s.db.Exec(`ANALYZE`); err != nil {
 		return err
 	}
-	return s.setSearchIndexMeta(searchIndexVersion)
+	if err := s.setSearchIndexMeta(searchIndexVersion); err != nil {
+		return err
+	}
+	return s.setSearchLangsMeta(s.langsKey())
 }
 
 func (s *Store) resetSearchTable() error {
@@ -105,11 +119,12 @@ func (s *Store) resetSearchTable() error {
 }
 
 func (s *Store) loadSearchBooks() ([]searchBookRow, error) {
+	lang, langArgs := s.langPred("b.lang")
 	rows, err := s.db.Query(`
 SELECT b.id, b.title, coalesce(s.title, '')
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
-WHERE b.deleted = 0 AND b.lang = 'ru'`)
+WHERE b.deleted = 0`+lang, langArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("search scan: %w", err)
 	}

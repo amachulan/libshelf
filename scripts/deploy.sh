@@ -164,6 +164,15 @@ if [[ -n "$LIB_DIR_EXTRA" ]]; then
     SERVE_ARGS+=(--library-dir "$d")
   done
 fi
+# Optional: LIBSHELF_LANGUAGES=ru,en or * for all (default: ru via serve)
+if [[ -n "${LIBSHELF_LANGUAGES:-}" ]]; then
+  IFS=',' read -r -a _langs <<< "$LIBSHELF_LANGUAGES"
+  for lang in "${_langs[@]}"; do
+    lang="$(echo "$lang" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [[ -n "$lang" ]] || continue
+    SERVE_ARGS+=(--lang "$lang")
+  done
+fi
 
 screen -dmaS "$SCREEN_NAME" "$BIN" "${SERVE_ARGS[@]}"
 
