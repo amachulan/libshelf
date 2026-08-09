@@ -13,7 +13,7 @@ import (
 	"github.com/bodgit/sevenzip"
 )
 
-// OpenBook reads a book file from a Flibusta archive (zip or 7z).
+// OpenBook reads a book file from an INPX-style archive (zip or 7z).
 // folder is the archive name (e.g. f.fb2-000001-025000.zip),
 // file is the entry name without extension, ext is e.g. "fb2".
 func OpenBook(libraryDir, folder, file, ext string) ([]byte, error) {

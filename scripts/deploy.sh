@@ -8,7 +8,7 @@ REPO="${LIBSHELF_REPO:-amachulan/libshelf}"
 BIN="${LIBSHELF_BIN:-/opt/libshelf/libshelf}"
 DATA_DIR="${LIBSHELF_DATA:-/opt/libshelf/data}"
 LIB_DIR="${LIBSHELF_LIB:-/mnt/share/Книги/fb2.Flibusta.Net}"
-# Optional extra archive roots (colon-separated), e.g. /data/flibusta-new
+# Optional extra archive roots (colon-separated), e.g. /data/books-new
 LIB_DIR_EXTRA="${LIBSHELF_LIB_EXTRA:-}"
 ADDR="${LIBSHELF_ADDR:-127.0.0.1:12380}"
 SCREEN_NAME="${LIBSHELF_SCREEN:-libshelf}"

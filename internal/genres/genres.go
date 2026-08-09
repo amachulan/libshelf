@@ -1,4 +1,4 @@
-// Package genres maps Flibusta / MyHomeLib genre codes to Russian titles.
+// Package genres maps MyHomeLib / INPX genre codes to Russian titles.
 package genres
 
 import "strings"

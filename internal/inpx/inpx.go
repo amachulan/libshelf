@@ -1,4 +1,4 @@
-// Package inpx reads MyHomeLib / Flibusta .inpx catalogs (ZIP of .inp files).
+// Package inpx reads MyHomeLib-compatible .inpx catalogs (ZIP of .inp files).
 package inpx
 
 import (

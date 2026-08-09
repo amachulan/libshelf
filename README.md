@@ -1,8 +1,8 @@
 # libshelf
 
-Self-hosted веб-каталог для коллекции Flibusta: индекс `.inpx` + архивы FB2.
+Self-hosted веб-каталог личной библиотеки: индекс **`.inpx`** + архивы **FB2**.
 
-Один статический бинарник на Go, SQLite + FTS5, встроенный UI. Подходит для домашнего сервера, NAS или VPS: импортируете каталог, указываете каталог с архивами и поднимаете HTTP.
+Один статический бинарник на Go, SQLite + FTS5, встроенный UI. Подходит для домашнего сервера, NAS или VPS: импортируете каталог MyHomeLib/INPX, указываете папку с архивами и поднимаете HTTP.
 
 ## Возможности
 
@@ -17,7 +17,7 @@ Self-hosted веб-каталог для коллекции Flibusta: индек
 
 ## Что нужно
 
-1. Файл каталога `.inpx` (как у Flibusta / совместимых сборок).
+1. Файл каталога `.inpx` (формат MyHomeLib / совместимые сборки).
 2. Каталог с архивами книг, на которые ссылается этот `.inpx` (`--library-dir`).
 3. Каталог данных для SQLite и кэша обложек (`--data-dir`).
 
@@ -107,19 +107,19 @@ curl -s http://127.0.0.1:12380/health
 # ok <git-sha>
 ```
 
-## Два дампа Flibusta (старый + новый)
+## Два каталога `.inpx` (старый + новый)
 
-Типичный случай: в старом архиве есть книги, позже снятые с сайта, в новом — свежие книги без тех старых. Старый дамп **не трогаем**; новый после скачивания чистим от дублей и дописываем в базу.
+Типичный случай: в старом дампе есть книги, которых нет в свежем (или наоборот). Старый дамп **не трогаем**; новый после получения чистим от дублей и дописываем в базу.
 
-1. Скачать свежий слепок в отдельную папку (например `/data/flibusta-new/`).
+1. Положить свежий слепок в отдельную папку (например `/data/books-new/`).
 2. Убрать из нового `.inpx` всё, что уже есть в вашей базе:
 
 ```sh
 ./libshelf dedupe \
   --base-db /opt/libshelf/data/libshelf.db \
-  --incoming /data/flibusta-new/catalog.inpx \
-  --out /data/flibusta-new/catalog.unique.inpx \
-  --library-dir /data/flibusta-new \
+  --incoming /data/books-new/catalog.inpx \
+  --out /data/books-new/catalog.unique.inpx \
+  --library-dir /data/books-new \
   --prune-empty-archives
 ```
 
@@ -129,7 +129,7 @@ curl -s http://127.0.0.1:12380/health
 
 ```sh
 ./libshelf import --append \
-  --inpx /data/flibusta-new/catalog.unique.inpx \
+  --inpx /data/books-new/catalog.unique.inpx \
   --library-dir /opt/libshelf/library \
   --data-dir /opt/libshelf/data
 ```
@@ -138,13 +138,13 @@ curl -s http://127.0.0.1:12380/health
 
 ```sh
 ./libshelf serve \
-  --library-dir /mnt/share/Книги/fb2.Flibusta.Net \
-  --library-dir /data/flibusta-new \
+  --library-dir /opt/libshelf/library \
+  --library-dir /data/books-new \
   --data-dir /opt/libshelf/data \
   --auth users
 ```
 
-Или в `deploy.sh`: `LIBSHELF_LIB_EXTRA=/data/flibusta-new` (несколько путей через `:`).
+Или в `deploy.sh`: `LIBSHELF_LIB_EXTRA=/data/books-new` (несколько путей через `:`).
 
 Вместо `--base-db` можно указать эталонный старый `.inpx`: `--base /path/to/old.inpx`.  
 При конфликте LIBID побеждает уже существующая запись (старая база / первый `--inpx`).
@@ -257,9 +257,9 @@ libshelf version
 ```json
 {
   "addr": "127.0.0.1:12380",
-  "library_dir": "C:\\\\Books\\\\flibusta",
+  "library_dir": "C:\\\\Books\\\\archives",
   "data_dir": "C:\\\\LibShelf\\\\data",
-  "inpx": "C:\\\\Books\\\\flibusta.inpx",
+  "inpx": "C:\\\\Books\\\\catalog.inpx",
   "auth": "users",
   "open_browser": true
 }

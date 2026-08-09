@@ -48,7 +48,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `libshelf — personal Flibusta catalog
+	fmt.Fprintf(os.Stderr, `libshelf — personal INPX/FB2 library catalog
 
 Usage:
   libshelf                 same as start (double-click friendly)
@@ -59,19 +59,19 @@ Usage:
   libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
   libshelf version
 
-Dedupe example (old library stays untouched; clean the newly downloaded dump):
+Dedupe example (old library stays untouched; clean a newly obtained dump):
   libshelf dedupe \
     --base-db /opt/libshelf/data/libshelf.db \
-    --incoming /data/flibusta-new/catalog.inpx \
-    --out /data/flibusta-new/catalog.unique.inpx \
-    --library-dir /data/flibusta-new \
+    --incoming /data/books-new/catalog.inpx \
+    --out /data/books-new/catalog.unique.inpx \
+    --library-dir /data/books-new \
     --prune-empty-archives
 
 Then append the cleaned catalog (archives may stay in the new folder):
-  libshelf import --append --inpx /data/flibusta-new/catalog.unique.inpx \
+  libshelf import --append --inpx /data/books-new/catalog.unique.inpx \
     --library-dir /opt/libshelf/library --data-dir /opt/libshelf/data
   # serve with both roots:
-  libshelf serve --library-dir /opt/libshelf/library --library-dir /data/flibusta-new \
+  libshelf serve --library-dir /opt/libshelf/library --library-dir /data/books-new \
     --data-dir /opt/libshelf/data
 
 Windows: download libshelf-windows-amd64.exe, double-click it, finish setup in the browser.

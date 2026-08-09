@@ -21,20 +21,20 @@
   <main class="login-card setup-card">
     <button type="button" class="icon-btn" data-theme-toggle title="Тема" aria-label="Тема">☾</button>
     <h1>LibShelf</h1>
-    <p class="lead">Первый запуск: укажите каталог Flibusta и папку с архивами FB2.</p>
+    <p class="lead">Первый запуск: укажите файл каталога <code>.inpx</code> и папку с архивами FB2.</p>
 
     <form id="setup-form">
       <label>
         Файл каталога (.inpx)
         <div class="field-row">
-          <input id="inpx" class="field" type="text" required placeholder="C:\Books\flibusta.inpx" autocomplete="off">
+          <input id="inpx" class="field" type="text" required placeholder="C:\Books\catalog.inpx" autocomplete="off">
           <button type="button" class="top-btn" id="browse-inpx" hidden>Обзор…</button>
         </div>
       </label>
       <label>
         Папка с архивами книг
         <div class="field-row">
-          <input id="library_dir" class="field" type="text" required placeholder="C:\Books\flibusta" autocomplete="off">
+          <input id="library_dir" class="field" type="text" required placeholder="C:\Books\archives" autocomplete="off">
           <button type="button" class="top-btn" id="browse-library" hidden>Обзор…</button>
         </div>
       </label>
