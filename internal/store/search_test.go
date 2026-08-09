@@ -33,20 +33,30 @@ func TestFtsMatchGeneralAndAuthor(t *testing.T) {
 }
 
 func TestSearchQueryNormalizeYear(t *testing.T) {
-	q := SearchQuery{YearFrom: 2026}
+	q := SearchQuery{YearFrom: 2025}
 	q.NormalizeYear()
-	if q.YearFrom != 2026 || q.YearTo != 2026 {
-		t.Fatalf("exact: %+v", q)
+	if q.YearFrom != 2025 || q.YearTo != 9999 {
+		t.Fatalf("open to: %+v", q)
 	}
 	q = SearchQuery{YearTo: 2020}
 	q.NormalizeYear()
 	if q.YearFrom != 1 || q.YearTo != 2020 {
 		t.Fatalf("open from: %+v", q)
 	}
+	q = SearchQuery{YearFrom: 2025, YearTo: 2026}
+	q.NormalizeYear()
+	if q.YearFrom != 2025 || q.YearTo != 2026 {
+		t.Fatalf("range: %+v", q)
+	}
 	q = SearchQuery{YearFrom: 2020, YearTo: 2010}
 	q.NormalizeYear()
 	if q.YearFrom != 2010 || q.YearTo != 2020 {
 		t.Fatalf("swap: %+v", q)
+	}
+	q = SearchQuery{AddedFrom: 2025}
+	q.NormalizeYear()
+	if q.AddedFrom != 2025 || q.AddedTo != 9999 {
+		t.Fatalf("added open to: %+v", q)
 	}
 }
 
@@ -56,6 +66,9 @@ func TestSearchQueryEmpty(t *testing.T) {
 	}
 	if (SearchQuery{YearFrom: 2026}).Empty() {
 		t.Fatal("year-only should not be empty")
+	}
+	if (SearchQuery{AddedFrom: 2025}).Empty() {
+		t.Fatal("added-only should not be empty")
 	}
 	if (SearchQuery{Author: "кинг"}).Empty() {
 		t.Fatal("author should not be empty")

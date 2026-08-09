@@ -7,14 +7,15 @@ import (
 )
 
 // SearchQuery is a text/year filter for catalog search.
-// Empty text fields are ignored. YearFrom/YearTo are inclusive; 0 means unset.
-// If only YearFrom is set, it matches that exact year.
+// Empty text fields are ignored. Year/Added ranges are inclusive; 0 means unset.
 type SearchQuery struct {
-	Q        string
-	Author   string
-	Title    string
-	YearFrom int
-	YearTo   int
+	Q         string
+	Author    string
+	Title     string
+	YearFrom  int // publication year (INPX YEAR)
+	YearTo    int
+	AddedFrom int // year book was added to the dump (INPX DATE → books.added)
+	AddedTo   int
 }
 
 func (q SearchQuery) hasText() bool {
@@ -27,21 +28,32 @@ func (q SearchQuery) hasYear() bool {
 	return q.YearFrom > 0 || q.YearTo > 0
 }
 
-func (q SearchQuery) Empty() bool {
-	return !q.hasText() && !q.hasYear()
+func (q SearchQuery) hasAdded() bool {
+	return q.AddedFrom > 0 || q.AddedTo > 0
 }
 
-// NormalizeYear clamps inverted ranges and turns a lone YearFrom into an exact year.
+func (q SearchQuery) Empty() bool {
+	return !q.hasText() && !q.hasYear() && !q.hasAdded()
+}
+
+func normalizeYearRange(from, to *int) {
+	const yearMax = 9999
+	if *from > 0 && *to == 0 {
+		*to = yearMax
+	}
+	if *to > 0 && *from == 0 {
+		*from = 1
+	}
+	if *from > 0 && *to > 0 && *from > *to {
+		*from, *to = *to, *from
+	}
+}
+
+// NormalizeYear clamps inverted / open publication-year and added-year ranges.
+// Only From → from that year onward; only To → up to that year.
 func (q *SearchQuery) NormalizeYear() {
-	if q.YearFrom > 0 && q.YearTo == 0 {
-		q.YearTo = q.YearFrom
-	}
-	if q.YearTo > 0 && q.YearFrom == 0 {
-		q.YearFrom = 1
-	}
-	if q.YearFrom > 0 && q.YearTo > 0 && q.YearFrom > q.YearTo {
-		q.YearFrom, q.YearTo = q.YearTo, q.YearFrom
-	}
+	normalizeYearRange(&q.YearFrom, &q.YearTo)
+	normalizeYearRange(&q.AddedFrom, &q.AddedTo)
 }
 
 // ftsQuery builds an FTS5 expression where every token must match
@@ -132,9 +144,21 @@ WHERE b.deleted = 0` + lang)
   AND coalesce(b.year, 0) >= ? AND coalesce(b.year, 0) <= ?`)
 		args = append(args, q.YearFrom, q.YearTo)
 	}
+	if q.hasAdded() {
+		// books.added is INPX DATE text, usually YYYY-MM-DD.
+		sb.WriteString(`
+  AND length(b.added) >= 4
+  AND CAST(substr(b.added, 1, 4) AS INTEGER) >= ?
+  AND CAST(substr(b.added, 1, 4) AS INTEGER) <= ?`)
+		args = append(args, q.AddedFrom, q.AddedTo)
+	}
 	if match != "" {
 		sb.WriteString(`
 ORDER BY bm25(book_search, 2.0, 8.0, 4.0), b.title
+`)
+	} else if q.hasAdded() {
+		sb.WriteString(`
+ORDER BY b.added DESC, b.title
 `)
 	} else {
 		sb.WriteString(`

@@ -255,6 +255,15 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if y, err := strconv.Atoi(qs.Get("year_to")); err == nil && y > 0 {
 		q.YearTo = y
 	}
+	if y, err := strconv.Atoi(qs.Get("added")); err == nil && y > 0 {
+		q.AddedFrom, q.AddedTo = y, y
+	}
+	if y, err := strconv.Atoi(qs.Get("added_from")); err == nil && y > 0 {
+		q.AddedFrom = y
+	}
+	if y, err := strconv.Atoi(qs.Get("added_to")); err == nil && y > 0 {
+		q.AddedTo = y
+	}
 	q.NormalizeYear()
 	limit, _ := strconv.Atoi(qs.Get("limit"))
 	offset, _ := strconv.Atoi(qs.Get("offset"))
@@ -268,15 +277,17 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	decorateBooks(books)
 	writeJSON(w, map[string]any{
-		"query":     q.Q,
-		"author":    q.Author,
-		"title":     q.Title,
-		"yearFrom":  q.YearFrom,
-		"yearTo":    q.YearTo,
-		"books":     books,
-		"total":     total,
-		"limit":     limit,
-		"offset":    offset,
+		"query":      q.Q,
+		"author":     q.Author,
+		"title":      q.Title,
+		"yearFrom":   q.YearFrom,
+		"yearTo":     q.YearTo,
+		"addedFrom":  q.AddedFrom,
+		"addedTo":    q.AddedTo,
+		"books":      books,
+		"total":      total,
+		"limit":      limit,
+		"offset":     offset,
 	})
 }
 

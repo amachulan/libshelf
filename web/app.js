@@ -18,12 +18,14 @@ const advTitle = $("adv-title");
 const advAuthor = $("adv-author");
 const advYearFrom = $("adv-year-from");
 const advYearTo = $("adv-year-to");
+const advAddedFrom = $("adv-added-from");
+const advAddedTo = $("adv-added-to");
 const resultsBack = $("results-back");
 const resultsSub = $("results-sub");
 
 const PAGE_SIZE = 60;
 
-/** @typedef {{ q: string, title: string, author: string, yearFrom: string, yearTo: string }} SearchParams */
+/** @typedef {{ q: string, title: string, author: string, yearFrom: string, yearTo: string, addedFrom: string, addedTo: string }} SearchParams */
 
 /** @type {SearchParams} */
 let lastSearch = emptySearch();
@@ -235,7 +237,7 @@ function syncResultsPager() {
 }
 
 function emptySearch() {
-  return { q: "", title: "", author: "", yearFrom: "", yearTo: "" };
+  return { q: "", title: "", author: "", yearFrom: "", yearTo: "", addedFrom: "", addedTo: "" };
 }
 
 function readSearchFromForm() {
@@ -245,6 +247,8 @@ function readSearchFromForm() {
     author: (advAuthor.value || "").trim(),
     yearFrom: (advYearFrom.value || "").trim(),
     yearTo: (advYearTo.value || "").trim(),
+    addedFrom: (advAddedFrom.value || "").trim(),
+    addedTo: (advAddedTo.value || "").trim(),
   };
 }
 
@@ -255,14 +259,22 @@ function writeSearchToForm(s) {
   advAuthor.value = p.author || "";
   advYearFrom.value = p.yearFrom || "";
   advYearTo.value = p.yearTo || "";
+  advAddedFrom.value = p.addedFrom || "";
+  advAddedTo.value = p.addedTo || "";
 }
 
 function searchHasFilters(s) {
-  return !!(s.q || s.title || s.author || s.yearFrom || s.yearTo);
+  return !!(s.q || s.title || s.author || s.yearFrom || s.yearTo || s.addedFrom || s.addedTo);
 }
 
 function searchIsAdvanced(s) {
-  return !!(s.title || s.author || s.yearFrom || s.yearTo);
+  return !!(s.title || s.author || s.yearFrom || s.yearTo || s.addedFrom || s.addedTo);
+}
+
+function yearRangeLabel(from, to, prefix) {
+  if (from && to && from === to) return prefix + from;
+  if (from || to) return prefix + (from || "…") + "–" + (to || "…");
+  return "";
 }
 
 function searchLabel(s) {
@@ -270,11 +282,20 @@ function searchLabel(s) {
   if (s.q) bits.push(`«${s.q}»`);
   if (s.title) bits.push(`назв. «${s.title}»`);
   if (s.author) bits.push(`авт. «${s.author}»`);
-  if (s.yearFrom && s.yearTo && s.yearFrom === s.yearTo) bits.push(s.yearFrom);
-  else if (s.yearFrom || s.yearTo) {
-    bits.push((s.yearFrom || "…") + "–" + (s.yearTo || "…"));
-  }
+  const pub = yearRangeLabel(s.yearFrom, s.yearTo, "изд. ");
+  if (pub) bits.push(pub);
+  const added = yearRangeLabel(s.addedFrom, s.addedTo, "доб. ");
+  if (added) bits.push(added);
   return bits.length ? bits.join(" · ") : "";
+}
+
+function appendYearParams(qs, from, to, exactKey, fromKey, toKey) {
+  if (from && to && from === to) {
+    qs.set(exactKey, from);
+    return;
+  }
+  if (from) qs.set(fromKey, from);
+  if (to) qs.set(toKey, to);
 }
 
 function searchAPIURL(s, page) {
@@ -282,12 +303,8 @@ function searchAPIURL(s, page) {
   if (s.q) qs.set("q", s.q);
   if (s.title) qs.set("title", s.title);
   if (s.author) qs.set("author", s.author);
-  if (s.yearFrom && s.yearTo && s.yearFrom === s.yearTo) {
-    qs.set("year", s.yearFrom);
-  } else {
-    if (s.yearFrom) qs.set("year_from", s.yearFrom);
-    if (s.yearTo) qs.set("year_to", s.yearTo);
-  }
+  appendYearParams(qs, s.yearFrom, s.yearTo, "year", "year_from", "year_to");
+  appendYearParams(qs, s.addedFrom, s.addedTo, "added", "added_from", "added_to");
   qs.set("limit", String(PAGE_SIZE));
   qs.set("offset", String((Math.max(1, page || 1) - 1) * PAGE_SIZE));
   return "/api/search?" + qs.toString();
@@ -299,31 +316,35 @@ function searchPageURL(s, page) {
   if (s.title) qs.set("title", s.title);
   // "au" — текст автора в поиске; "author" занят id страницы автора.
   if (s.author) qs.set("au", s.author);
-  if (s.yearFrom && s.yearTo && s.yearFrom === s.yearTo) {
-    qs.set("year", s.yearFrom);
-  } else {
-    if (s.yearFrom) qs.set("year_from", s.yearFrom);
-    if (s.yearTo) qs.set("year_to", s.yearTo);
-  }
+  appendYearParams(qs, s.yearFrom, s.yearTo, "year", "year_from", "year_to");
+  appendYearParams(qs, s.addedFrom, s.addedTo, "added", "added_from", "added_to");
   if (page > 1) qs.set("p", String(page));
   const str = qs.toString();
   return str ? "/?" + str : "/";
 }
 
-function searchFromURLParams(params) {
-  const year = (params.get("year") || "").trim();
-  let yearFrom = (params.get("year_from") || "").trim();
-  let yearTo = (params.get("year_to") || "").trim();
-  if (year && !yearFrom && !yearTo) {
-    yearFrom = year;
-    yearTo = year;
+function yearRangeFromParams(params, exactKey, fromKey, toKey) {
+  const exact = (params.get(exactKey) || "").trim();
+  let from = (params.get(fromKey) || "").trim();
+  let to = (params.get(toKey) || "").trim();
+  if (exact && !from && !to) {
+    from = exact;
+    to = exact;
   }
+  return { from, to };
+}
+
+function searchFromURLParams(params) {
+  const year = yearRangeFromParams(params, "year", "year_from", "year_to");
+  const added = yearRangeFromParams(params, "added", "added_from", "added_to");
   return {
     q: (params.get("q") || "").trim(),
     title: (params.get("title") || "").trim(),
     author: (params.get("au") || "").trim(),
-    yearFrom,
-    yearTo,
+    yearFrom: year.from,
+    yearTo: year.to,
+    addedFrom: added.from,
+    addedTo: added.to,
   };
 }
 
@@ -385,6 +406,8 @@ async function doSearch(search, page) {
           author: (search?.author || "").trim(),
           yearFrom: String(search?.yearFrom || "").trim(),
           yearTo: String(search?.yearTo || "").trim(),
+          addedFrom: String(search?.addedFrom || "").trim(),
+          addedTo: String(search?.addedTo || "").trim(),
         };
   page = Math.max(1, page || 1);
   writeSearchToForm(s);

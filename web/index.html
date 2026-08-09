@@ -71,6 +71,14 @@
           <input id="adv-year-to" name="year_to" type="number" inputmode="numeric" min="1" max="2100" placeholder="до" autocomplete="off">
         </span>
       </label>
+      <label class="adv-field adv-field-year">
+        <span>Добавлено</span>
+        <span class="adv-year-row">
+          <input id="adv-added-from" name="added_from" type="number" inputmode="numeric" min="1" max="2100" placeholder="от" autocomplete="off">
+          <span class="adv-year-sep">—</span>
+          <input id="adv-added-to" name="added_to" type="number" inputmode="numeric" min="1" max="2100" placeholder="до" autocomplete="off">
+        </span>
+      </label>
       <div class="adv-actions">
         <button type="submit" class="btn">Найти</button>
         <button type="button" id="adv-search-clear" class="btn btn-secondary">Сбросить</button>
@@ -82,7 +90,7 @@
     <section id="home" class="panel">
       <p id="stats" class="stats"></p>
       <h1>Личная библиотека</h1>
-      <p class="lead">Поиск по автору, названию и серии; в расширенном — отдельно автор и год издания. Языки каталога задаёт администратор.</p>
+      <p class="lead">Поиск по автору, названию и серии; в расширенном — автор, год издания и дата добавления в каталог. Языки каталога задаёт администратор.</p>
       <div id="continue-block" class="continue-block hidden">
         <div class="section-head">
           <h2>Продолжить чтение</h2>
