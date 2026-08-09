@@ -12,10 +12,18 @@ import (
 
 type ImportStats struct {
 	Books    int
+	Skipped  int
 	Authors  int
 	Series   int
 	Genres   int
 	Duration time.Duration
+}
+
+type ImportOptions struct {
+	Paths   []string
+	Replace bool
+	// Append skips records whose LIBID already exists (first / DB wins).
+	Append bool
 }
 
 const importBatchSize = 25_000
@@ -25,25 +33,39 @@ type authorKey struct {
 }
 
 func (s *Store) ImportINPX(path string, replace bool) (ImportStats, error) {
+	return s.ImportCatalog(ImportOptions{Paths: []string{path}, Replace: replace})
+}
+
+func (s *Store) ImportCatalog(opts ImportOptions) (ImportStats, error) {
+	if len(opts.Paths) == 0 {
+		return ImportStats{}, fmt.Errorf("no inpx paths")
+	}
+	if opts.Replace && opts.Append {
+		return ImportStats{}, fmt.Errorf("replace and append are mutually exclusive")
+	}
+
 	n, err := s.TotalBookCount()
 	if err != nil {
 		return ImportStats{}, err
 	}
-	if n > 0 {
-		if !replace {
-			return ImportStats{}, fmt.Errorf("library is not empty (%d books); use --replace to reimport", n)
-		}
+	if n > 0 && !opts.Replace && !opts.Append {
+		return ImportStats{}, fmt.Errorf("library is not empty (%d books); use --replace or --append", n)
+	}
+	if opts.Replace {
 		if err := s.clearCatalog(); err != nil {
 			return ImportStats{}, err
 		}
+		n = 0
 	}
 
-	f, err := inpx.Open(path)
-	if err != nil {
-		return ImportStats{}, err
+	skip := map[string]struct{}{}
+	if opts.Append && n > 0 {
+		skip, err = s.LibIDs(false)
+		if err != nil {
+			return ImportStats{}, err
+		}
+		log.Printf("append mode: %d existing lib ids will be skipped", len(skip))
 	}
-	defer f.Close()
-	log.Printf("collection %q", f.CollectionName())
 
 	for _, idx := range schemaIndexes {
 		name := indexName(idx)
@@ -59,24 +81,48 @@ func (s *Store) ImportINPX(path string, replace bool) (ImportStats, error) {
 		series:  make(map[string]int64, 1<<16),
 		authors: make(map[authorKey]int64, 1<<17),
 		genres:  make(map[string]int64, 256),
+		seen:    make(map[string]struct{}, 1<<20),
+		skip:    skip,
 		start:   start,
+	}
+	if n > 0 && opts.Append {
+		if err := im.preloadLookups(); err != nil {
+			return ImportStats{}, err
+		}
 	}
 	if err := im.begin(); err != nil {
 		return ImportStats{}, err
 	}
 
-	err = f.Records(func(rec *inpx.Record) error {
-		return im.add(rec)
-	})
-	if err != nil {
-		im.abort()
-		return ImportStats{}, err
+	var lastName string
+	for _, path := range opts.Paths {
+		f, err := inpx.Open(path)
+		if err != nil {
+			im.abort()
+			return ImportStats{}, err
+		}
+		log.Printf("importing %q (%s)", f.CollectionName(), path)
+		err = f.Records(func(rec *inpx.Record) error {
+			return im.add(rec)
+		})
+		name := f.CollectionName()
+		_ = f.Close()
+		if err != nil {
+			im.abort()
+			return ImportStats{}, err
+		}
+		if name != "" {
+			lastName = name
+		}
 	}
+
 	stats, err := im.finish()
 	if err != nil {
 		return ImportStats{}, err
 	}
-	_, _ = s.db.Exec(`INSERT OR REPLACE INTO meta(key, value) VALUES('collection', ?)`, f.CollectionName())
+	if lastName != "" {
+		_, _ = s.db.Exec(`INSERT OR REPLACE INTO meta(key, value) VALUES('collection', ?)`, lastName)
+	}
 	return stats, nil
 }
 
@@ -113,11 +159,56 @@ type importSession struct {
 	series  map[string]int64
 	authors map[authorKey]int64
 	genres  map[string]int64
+	seen    map[string]struct{} // lib ids added in this import run
+	skip    map[string]struct{} // preexisting lib ids (append)
 	stats   ImportStats
 }
 
 type importStmts struct {
 	folder, series, author, genre, book, ba, bg *sql.Stmt
+}
+
+func (im *importSession) preloadLookups() error {
+	if err := scanIDMap(im.s.db, `SELECT id, name FROM folders`, im.folders); err != nil {
+		return err
+	}
+	if err := scanIDMap(im.s.db, `SELECT id, title FROM series`, im.series); err != nil {
+		return err
+	}
+	if err := scanIDMap(im.s.db, `SELECT id, code FROM genres`, im.genres); err != nil {
+		return err
+	}
+	rows, err := im.s.db.Query(`SELECT id, last_name, first_name, middle_name FROM authors`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var key authorKey
+		if err := rows.Scan(&id, &key.Last, &key.First, &key.Middle); err != nil {
+			return err
+		}
+		im.authors[key] = id
+	}
+	return rows.Err()
+}
+
+func scanIDMap(db *sql.DB, q string, dst map[string]int64) error {
+	rows, err := db.Query(q)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var key string
+		if err := rows.Scan(&id, &key); err != nil {
+			return err
+		}
+		dst[key] = id
+	}
+	return rows.Err()
 }
 
 func (im *importSession) begin() error {
@@ -182,6 +273,18 @@ func lookup(cache map[string]int64, key string, ins *sql.Stmt) (int64, error) {
 }
 
 func (im *importSession) add(rec *inpx.Record) error {
+	if rec.LibID != "" {
+		if _, ok := im.skip[rec.LibID]; ok {
+			im.stats.Skipped++
+			return nil
+		}
+		if _, ok := im.seen[rec.LibID]; ok {
+			im.stats.Skipped++
+			return nil
+		}
+		im.seen[rec.LibID] = struct{}{}
+	}
+
 	folderID, err := lookup(im.folders, rec.Folder, im.stmts.folder)
 	if err != nil {
 		return err

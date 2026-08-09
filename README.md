@@ -107,6 +107,37 @@ curl -s http://127.0.0.1:12380/health
 # ok <git-sha>
 ```
 
+## Два дампа Flibusta (старый + новый)
+
+Типичный случай: в старом архиве есть книги, позже снятые с сайта, в новом — свежие книги без тех старых. Старый дамп **не трогаем**; новый после скачивания чистим от дублей и дописываем в базу.
+
+1. Скачать свежий слепок в отдельную папку (например `/data/flibusta-new/`).
+2. Убрать из нового `.inpx` всё, что уже есть в вашей базе:
+
+```sh
+./libshelf dedupe \
+  --base-db /opt/libshelf/data/libshelf.db \
+  --incoming /data/flibusta-new/catalog.inpx \
+  --out /data/flibusta-new/catalog.unique.inpx \
+  --library-dir /data/flibusta-new \
+  --prune-empty-archives
+```
+
+Сначала можно добавить `--dry-run`, чтобы только увидеть список архивов на удаление.
+
+3. Оставшиеся архивы нового дампа скопировать/перенести в основной `--library-dir`.
+4. Дописать каталог без очистки старой базы:
+
+```sh
+./libshelf import --append \
+  --inpx /data/flibusta-new/catalog.unique.inpx \
+  --library-dir /opt/libshelf/library \
+  --data-dir /opt/libshelf/data
+```
+
+Вместо `--base-db` можно указать эталонный старый `.inpx`: `--base /path/to/old.inpx`.  
+При конфликте LIBID побеждает уже существующая запись (старая база / первый `--inpx`).
+
 ## Авторизация
 
 По умолчанию `--auth=users`: без логина UI и API недоступны (кроме `/health`, страницы входа и статики логина).
@@ -203,7 +234,8 @@ sudo /opt/libshelf/deploy.sh
 ```text
 libshelf                 (= start)
 libshelf start           [--config FILE] [--addr HOST:PORT] [--no-browser]
-libshelf import          --inpx FILE --library-dir DIR --data-dir DIR [--replace]
+libshelf import          --inpx FILE [--inpx FILE ...] --library-dir DIR --data-dir DIR [--replace|--append]
+libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db PATH) [--library-dir DIR] [--prune-empty-archives] [--dry-run]
 libshelf serve           --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
 libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
 libshelf version

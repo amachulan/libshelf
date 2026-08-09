@@ -13,6 +13,7 @@ import (
 
 	"libshelf/internal/appconfig"
 	"libshelf/internal/auth"
+	"libshelf/internal/inpx"
 	"libshelf/internal/server"
 	"libshelf/internal/store"
 	"libshelf/internal/version"
@@ -29,6 +30,8 @@ func main() {
 		runStart(os.Args[2:])
 	case "import":
 		runImport(os.Args[2:])
+	case "dedupe":
+		runDedupe(os.Args[2:])
 	case "serve":
 		runServe(os.Args[2:])
 	case "user":
@@ -50,14 +53,35 @@ func usage() {
 Usage:
   libshelf                 same as start (double-click friendly)
   libshelf start           [--config FILE] [--addr HOST:PORT] [--no-browser]
-  libshelf import          --inpx FILE --library-dir DIR --data-dir DIR [--replace]
+  libshelf import          --inpx FILE [--inpx FILE ...] --library-dir DIR --data-dir DIR [--replace|--append]
+  libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db DIR/FILE) [options]
   libshelf serve           --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
   libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
   libshelf version
 
+Dedupe example (old library stays untouched; clean the newly downloaded dump):
+  libshelf dedupe \
+    --base-db /opt/libshelf/data/libshelf.db \
+    --incoming /data/flibusta-new/catalog.inpx \
+    --out /data/flibusta-new/catalog.unique.inpx \
+    --library-dir /data/flibusta-new \
+    --prune-empty-archives
+
+Then copy remaining new archives into the main library dir and:
+  libshelf import --append --inpx /data/flibusta-new/catalog.unique.inpx \
+    --library-dir /opt/libshelf/library --data-dir /opt/libshelf/data
+
 Windows: download libshelf-windows-amd64.exe, double-click it, finish setup in the browser.
 
 `)
+}
+
+type stringList []string
+
+func (s *stringList) String() string { return strings.Join(*s, ",") }
+func (s *stringList) Set(v string) error {
+	*s = append(*s, v)
+	return nil
 }
 
 func runStart(args []string) {
@@ -189,14 +213,19 @@ func openBrowser(url string) error {
 
 func runImport(args []string) {
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
-	inpxPath := fs.String("inpx", "", "path to .inpx catalog")
+	var inpxPaths stringList
+	fs.Var(&inpxPaths, "inpx", "path to .inpx catalog (repeatable)")
 	libDir := fs.String("library-dir", "", "directory with book archives")
 	dataDir := fs.String("data-dir", "", "directory for SQLite database")
-	replace := fs.Bool("replace", false, "reimport even if database is not empty")
+	replace := fs.Bool("replace", false, "wipe catalog and reimport")
+	appendMode := fs.Bool("append", false, "add only books whose LIBID is not already in the database")
 	_ = fs.Parse(args)
-	if *inpxPath == "" || *libDir == "" || *dataDir == "" {
+	if len(inpxPaths) == 0 || *libDir == "" || *dataDir == "" {
 		fs.Usage()
 		os.Exit(2)
+	}
+	if *replace && *appendMode {
+		log.Fatal("--replace and --append cannot be used together")
 	}
 	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
 		log.Fatal(err)
@@ -207,12 +236,89 @@ func runImport(args []string) {
 		log.Fatal(err)
 	}
 	defer st.Close()
-	stats, err := st.ImportINPX(*inpxPath, *replace)
+	stats, err := st.ImportCatalog(store.ImportOptions{
+		Paths:   []string(inpxPaths),
+		Replace: *replace,
+		Append:  *appendMode,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("import done: books=%d authors=%d series=%d genres=%d in %s",
-		stats.Books, stats.Authors, stats.Series, stats.Genres, stats.Duration)
+	log.Printf("import done: books=%d skipped=%d authors=%d series=%d genres=%d in %s",
+		stats.Books, stats.Skipped, stats.Authors, stats.Series, stats.Genres, stats.Duration)
+}
+
+func runDedupe(args []string) {
+	fs := flag.NewFlagSet("dedupe", flag.ExitOnError)
+	baseINPX := fs.String("base", "", "reference .inpx (older dump; left untouched)")
+	baseDB := fs.String("base-db", "", "reference libshelf.db or its data-dir (preferred if library already imported)")
+	incoming := fs.String("incoming", "", "newly downloaded .inpx to clean")
+	out := fs.String("out", "", "output cleaned .inpx")
+	libDir := fs.String("library-dir", "", "directory of the NEW dump archives (for prune)")
+	prune := fs.Bool("prune-empty-archives", false, "delete NEW archives no longer referenced after dedupe")
+	dryRun := fs.Bool("dry-run", false, "with --prune-empty-archives: only print what would be removed")
+	aliveOnly := fs.Bool("base-alive-only", false, "ignore deleted=1 rows when building the base LIBID set")
+	_ = fs.Parse(args)
+
+	if *incoming == "" || *out == "" || (*baseINPX == "" && *baseDB == "") {
+		fs.Usage()
+		os.Exit(2)
+	}
+	if *prune && *libDir == "" {
+		log.Fatal("--prune-empty-archives requires --library-dir")
+	}
+
+	base := map[string]struct{}{}
+	if *baseDB != "" {
+		dbPath := *baseDB
+		if st, err := os.Stat(dbPath); err == nil && st.IsDir() {
+			dbPath = filepath.Join(dbPath, "libshelf.db")
+		}
+		st, err := store.Open(dbPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		ids, err := st.LibIDs(*aliveOnly)
+		_ = st.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+		base = ids
+		log.Printf("base-db: %d lib ids from %s", len(base), dbPath)
+	}
+	if *baseINPX != "" {
+		ids, err := inpx.CollectLibIDs(*baseINPX, *aliveOnly)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for id := range ids {
+			base[id] = struct{}{}
+		}
+		log.Printf("base inpx: %d lib ids from %s (union size now %d)", len(ids), *baseINPX, len(base))
+	}
+
+	stats, err := inpx.FilterINPX(*incoming, *out, base)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("dedupe: incoming=%d kept=%d dropped=%d no_libid=%d -> %s",
+		stats.IncomingTotal, stats.Kept, stats.Dropped, stats.SkippedNoID, *out)
+	log.Printf("folders: incoming=%d kept=%d", len(stats.IncomingFolders), len(stats.KeptFolders))
+
+	if *prune {
+		removed, err := inpx.PruneArchives(*libDir, stats.KeptFolders, stats.IncomingFolders, *dryRun)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if *dryRun {
+			log.Printf("dry-run prune: %d archives would be removed", len(removed))
+		} else {
+			log.Printf("pruned %d archives from %s", len(removed), *libDir)
+		}
+		for _, p := range removed {
+			log.Printf("  %s", p)
+		}
+	}
 }
 
 func runServe(args []string) {
