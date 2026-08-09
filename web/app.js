@@ -1324,7 +1324,7 @@ function scheduleCatalogFilter() {
       }
     }
     openCatalog(catalogTab);
-  }, 200);
+  }, 280);
 }
 
 async function openLists(status) {

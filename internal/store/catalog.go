@@ -2,10 +2,10 @@ package store
 
 import (
 	"database/sql"
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 
 	"libshelf/internal/genres"
@@ -145,10 +145,51 @@ func sortLetters(merged map[string]int) []LetterCount {
 	return out
 }
 
-func likePrefix(s string) string {
-	s = strings.ToUpper(foldYo(strings.TrimSpace(s)))
-	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return replacer.Replace(s) + "%"
+func likeEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// likePrefixPatterns builds LIKE prefixes for Cyrillic-safe matching.
+// SQLite upper()/LOWER() only handle ASCII, so case variants are generated in Go
+// and matched against the raw column (index-friendly last_name LIKE 'Ази%').
+func likePrefixPatterns(s string) []string {
+	s = foldYo(strings.TrimSpace(s))
+	if s == "" {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(v string) {
+		if v == "" {
+			return
+		}
+		p := likeEscape(v) + "%"
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	add(s)
+	add(strings.ToLower(s))
+	add(strings.ToUpper(s))
+	if r, size := utf8.DecodeRuneInString(s); r != utf8.RuneError && size > 0 {
+		add(string(unicode.ToUpper(r)) + strings.ToLower(s[size:]))
+	}
+	return out
+}
+
+func likeOrColumn(column string, patterns []string) (string, []any) {
+	if len(patterns) == 0 {
+		return "0", nil
+	}
+	parts := make([]string, len(patterns))
+	args := make([]any, len(patterns))
+	for i, p := range patterns {
+		parts[i] = column + ` LIKE ? ESCAPE '\'`
+		args[i] = p
+	}
+	return "(" + strings.Join(parts, " OR ") + ")", args
 }
 
 // AuthorsByPrefix returns authors whose name starts with query (last/first/full).
@@ -166,42 +207,51 @@ func (s *Store) AuthorsByPrefix(query string, limit int) ([]CatalogPerson, error
 
 	lang, langArgs := s.langPred("b.lang")
 	has, hasArgs := s.authorHasVisibleBooksSQL()
-	bookCount := `(
-  SELECT count(*) FROM book_authors ba
-  JOIN books b ON b.id = ba.book_id AND b.deleted = 0` + lang + `
-  WHERE ba.author_id = a.id
-)`
-	nameFold := `upper(replace(replace(%s,'ё','е'),'Ё','Е'))`
-	last := fmt.Sprintf(nameFold, "a.last_name")
-	first := fmt.Sprintf(nameFold, "a.first_name")
-	full := fmt.Sprintf(nameFold, `trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name)`)
+	fullName := `trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name)`
 
 	var (
 		where string
 		args  []any
 	)
-	args = append(args, langArgs...)
 	args = append(args, hasArgs...)
 	if len(tokens) >= 2 {
-		p0, p1 := likePrefix(tokens[0]), likePrefix(tokens[1])
-		where = `(` + last + ` LIKE ? ESCAPE '\' AND ` + first + ` LIKE ? ESCAPE '\')`
-		args = append(args, p0, p1)
+		wLast, aLast := likeOrColumn("a.last_name", likePrefixPatterns(tokens[0]))
+		wFirst, aFirst := likeOrColumn("a.first_name", likePrefixPatterns(tokens[1]))
+		where = `(` + wLast + ` AND ` + wFirst + `)`
+		args = append(args, aLast...)
+		args = append(args, aFirst...)
 	} else {
-		p := likePrefix(tokens[0])
-		where = `(` + last + ` LIKE ? ESCAPE '\' OR ` + first + ` LIKE ? ESCAPE '\' OR ` + full + ` LIKE ? ESCAPE '\')`
-		args = append(args, p, p, p)
+		pats := likePrefixPatterns(tokens[0])
+		wLast, aLast := likeOrColumn("a.last_name", pats)
+		wFirst, aFirst := likeOrColumn("a.first_name", pats)
+		wFull, aFull := likeOrColumn(fullName, pats)
+		where = `(` + wLast + ` OR ` + wFirst + ` OR ` + wFull + `)`
+		args = append(args, aLast...)
+		args = append(args, aFirst...)
+		args = append(args, aFull...)
 	}
 	args = append(args, limit)
+	args = append(args, langArgs...)
 
+	// Match first (can use idx_authors_name), then count books only for the page.
 	rows, err := s.db.Query(`
-SELECT a.id,
-       trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name),
-       `+bookCount+`
-FROM authors a
-WHERE `+has+`
-  AND `+where+`
-ORDER BY a.last_name, a.first_name
-LIMIT ?`, args...)
+WITH matched AS (
+  SELECT a.id,
+         `+fullName+` AS name,
+         a.last_name,
+         a.first_name
+  FROM authors a
+  WHERE `+has+`
+    AND `+where+`
+  ORDER BY a.last_name, a.first_name
+  LIMIT ?
+)
+SELECT m.id, m.name,
+  (SELECT count(*) FROM book_authors ba
+   JOIN books b ON b.id = ba.book_id AND b.deleted = 0`+lang+`
+   WHERE ba.author_id = m.id)
+FROM matched m
+ORDER BY m.last_name, m.first_name`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -303,8 +353,8 @@ GROUP BY 1`, langArgs...)
 
 // SeriesByPrefix returns series whose title starts with query.
 func (s *Store) SeriesByPrefix(query string, limit int) ([]CatalogSeries, error) {
-	query = strings.TrimSpace(query)
-	if query == "" {
+	pats := likePrefixPatterns(query)
+	if len(pats) == 0 {
 		return nil, nil
 	}
 	if limit <= 0 {
@@ -314,24 +364,27 @@ func (s *Store) SeriesByPrefix(query string, limit int) ([]CatalogSeries, error)
 		limit = 100
 	}
 	lang, langArgs := s.langPred("b.lang")
-	bookCount := `(
-  SELECT count(*) FROM books b
-  WHERE b.series_id = s.id AND b.deleted = 0` + lang + `
-)`
-	titleFold := `upper(replace(replace(s.title,'ё','е'),'Ё','Е'))`
-	pattern := likePrefix(query)
-	args := append(append([]any{}, langArgs...), langArgs...)
-	args = append(args, pattern, limit)
+	wTitle, aTitle := likeOrColumn("s.title", pats)
+	args := append(append([]any{}, langArgs...), aTitle...)
+	args = append(args, limit)
+	args = append(args, langArgs...)
 	rows, err := s.db.Query(`
-SELECT s.id, s.title, `+bookCount+`
-FROM series s
-WHERE EXISTS (
-  SELECT 1 FROM books b
-  WHERE b.series_id = s.id AND b.deleted = 0`+lang+`
+WITH matched AS (
+  SELECT s.id, s.title
+  FROM series s
+  WHERE EXISTS (
+    SELECT 1 FROM books b
+    WHERE b.series_id = s.id AND b.deleted = 0`+lang+`
+  )
+    AND `+wTitle+`
+  ORDER BY s.title
+  LIMIT ?
 )
-  AND `+titleFold+` LIKE ? ESCAPE '\'
-ORDER BY s.title
-LIMIT ?`, args...)
+SELECT m.id, m.title,
+  (SELECT count(*) FROM books b
+   WHERE b.series_id = m.id AND b.deleted = 0`+lang+`)
+FROM matched m
+ORDER BY m.title`, args...)
 	if err != nil {
 		return nil, err
 	}
