@@ -41,7 +41,9 @@
     </div>
     <form id="search-form" class="search" action="/" method="get">
       <input id="q" name="q" type="search" enterkeyhint="search" placeholder="Книга, автор или серия" autocomplete="off">
-      <button type="button" id="search-adv-toggle" class="search-adv-toggle" aria-expanded="false" aria-controls="adv-search" title="Расширенный поиск">⋮</button>
+      <button type="button" id="search-adv-toggle" class="search-adv-toggle" aria-expanded="false" aria-controls="adv-search" title="Расширенный поиск" aria-label="Расширенный поиск">
+        <span class="search-adv-ico" aria-hidden="true"></span>
+      </button>
       <button type="submit">Найти</button>
     </form>
     <div class="top-right">
@@ -100,7 +102,7 @@
     </section>
 
     <section id="results" class="panel hidden">
-      <button type="button" id="results-back" class="linkish hidden">← Назад</button>
+      <button type="button" id="results-back" class="linkish hidden">Назад</button>
       <h2 id="results-title">Результаты</h2>
       <p id="results-sub" class="results-sub hidden"></p>
       <div id="grid" class="grid"></div>
@@ -113,7 +115,7 @@
     </section>
 
     <section id="book" class="panel hidden">
-      <button type="button" id="back" class="linkish">← К результатам</button>
+      <button type="button" id="back" class="linkish">К результатам</button>
       <div class="book-card">
         <div class="cover-wrap">
           <img id="book-cover" alt="" width="220" height="320">
@@ -179,7 +181,7 @@
     </section>
 
     <section id="users" class="panel hidden">
-      <button type="button" id="users-back" class="linkish">← Назад</button>
+      <button type="button" id="users-back" class="linkish">Назад</button>
       <h2>Пользователи</h2>
       <form id="user-form" class="user-form" autocomplete="off">
         <input id="new-username" class="field" name="libshelf_new_user" placeholder="Логин" autocomplete="off" autocapitalize="none" spellcheck="false" required>

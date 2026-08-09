@@ -220,6 +220,12 @@ body {
   border-radius: var(--top-radius);
   background: var(--card);
   overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .field,
@@ -279,14 +285,23 @@ body {
   height: 100%;
   border: 0;
   border-radius: 0;
-  padding: 0 0.85rem;
+  padding: 0 0.75rem;
+  margin: 0;
   font: inherit;
   font-size: var(--top-font);
+  line-height: 1;
   background: transparent;
   color: var(--ink);
-  /* iOS Safari adds extra chrome on type=search that can overflow the row. */
+  outline: none;
+  box-shadow: none;
+  /* iOS Safari / Chromium search chrome can draw odd left edges. */
   -webkit-appearance: none;
   appearance: none;
+}
+
+.search input:focus {
+  outline: none;
+  box-shadow: none;
 }
 
 .search input::placeholder {
@@ -294,9 +309,12 @@ body {
 }
 
 .search input::-webkit-search-decoration,
-.search input::-webkit-search-cancel-button {
+.search input::-webkit-search-cancel-button,
+.search input::-webkit-search-results-button,
+.search input::-webkit-search-results-decoration {
   -webkit-appearance: none;
   appearance: none;
+  display: none;
 }
 
 .search button,
@@ -340,17 +358,17 @@ body {
 
 .search-adv-toggle {
   flex: 0 0 auto;
-  height: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   align-self: stretch;
-  padding: 0 0.55rem;
+  width: 2rem;
+  padding: 0;
   border: 0;
   border-left: 1px solid var(--line);
   border-radius: 0;
   background: transparent;
   color: var(--muted);
-  font: inherit;
-  font-size: 1.15rem;
-  line-height: 1;
   cursor: pointer;
 }
 
@@ -358,6 +376,20 @@ body {
 .search-adv-toggle[aria-expanded="true"] {
   color: var(--ink);
   background: color-mix(in srgb, var(--line) 40%, transparent);
+}
+
+.search-adv-ico {
+  display: block;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-0.12rem) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.search-adv-toggle[aria-expanded="true"] .search-adv-ico {
+  transform: translateY(0.1rem) rotate(225deg);
 }
 
 .adv-search {
@@ -1195,13 +1227,30 @@ body.reader-pages .reader-content .fb2-img {
 }
 
 .linkish {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   border: 0;
   background: none;
   color: var(--accent);
   cursor: pointer;
   padding: 0;
   margin-bottom: 1rem;
-  font-size: 1rem;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 550;
+  line-height: 1.2;
+}
+
+.linkish::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.42em;
+  height: 0.42em;
+  margin-top: 0.02em;
+  border-left: 1.75px solid currentColor;
+  border-bottom: 1.75px solid currentColor;
+  transform: rotate(45deg);
 }
 
 .empty { color: var(--muted); }
