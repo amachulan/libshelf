@@ -41,6 +41,7 @@
     </div>
     <form id="search-form" class="search" action="/" method="get">
       <input id="q" name="q" type="search" enterkeyhint="search" placeholder="Книга, автор или серия" autocomplete="off">
+      <button type="button" id="search-adv-toggle" class="search-adv-toggle" aria-expanded="false" aria-controls="adv-search" title="Расширенный поиск">⋮</button>
       <button type="submit">Найти</button>
     </form>
     <div class="top-right">
@@ -52,11 +53,36 @@
     </div>
   </header>
 
+  <div id="adv-search" class="adv-search hidden">
+    <form id="adv-search-form" class="adv-search-form" action="/" method="get">
+      <label class="adv-field">
+        <span>Название</span>
+        <input id="adv-title" name="title" type="search" enterkeyhint="search" autocomplete="off" placeholder="Любые слова из названия">
+      </label>
+      <label class="adv-field">
+        <span>Автор</span>
+        <input id="adv-author" name="author" type="search" enterkeyhint="search" autocomplete="off" placeholder="Фамилия или имя">
+      </label>
+      <label class="adv-field adv-field-year">
+        <span>Год издания</span>
+        <span class="adv-year-row">
+          <input id="adv-year-from" name="year_from" type="number" inputmode="numeric" min="1" max="2100" placeholder="от" autocomplete="off">
+          <span class="adv-year-sep">—</span>
+          <input id="adv-year-to" name="year_to" type="number" inputmode="numeric" min="1" max="2100" placeholder="до" autocomplete="off">
+        </span>
+      </label>
+      <div class="adv-actions">
+        <button type="submit" class="btn">Найти</button>
+        <button type="button" id="adv-search-clear" class="btn btn-secondary">Сбросить</button>
+      </div>
+    </form>
+  </div>
+
   <main id="site-main">
     <section id="home" class="panel">
       <p id="stats" class="stats"></p>
       <h1>Личная библиотека</h1>
-      <p class="lead">Поиск по автору, названию и серии; издания и переводы одной книги рядом. Языки каталога задаёт администратор.</p>
+      <p class="lead">Поиск по автору, названию и серии; в расширенном — отдельно автор и год издания. Языки каталога задаёт администратор.</p>
       <div id="continue-block" class="continue-block hidden">
         <div class="section-head">
           <h2>Продолжить чтение</h2>

@@ -240,24 +240,43 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	qs := r.URL.Query()
+	q := store.SearchQuery{
+		Q:      strings.TrimSpace(qs.Get("q")),
+		Author: strings.TrimSpace(qs.Get("author")),
+		Title:  strings.TrimSpace(qs.Get("title")),
+	}
+	if y, err := strconv.Atoi(qs.Get("year")); err == nil && y > 0 {
+		q.YearFrom, q.YearTo = y, y
+	}
+	if y, err := strconv.Atoi(qs.Get("year_from")); err == nil && y > 0 {
+		q.YearFrom = y
+	}
+	if y, err := strconv.Atoi(qs.Get("year_to")); err == nil && y > 0 {
+		q.YearTo = y
+	}
+	q.NormalizeYear()
+	limit, _ := strconv.Atoi(qs.Get("limit"))
+	offset, _ := strconv.Atoi(qs.Get("offset"))
 	if limit <= 0 {
 		limit = 60
 	}
-	books, total, err := s.store.Search(q, limit, offset)
+	books, total, err := s.store.SearchBy(q, limit, offset)
 	if err != nil {
 		httpError(w, err, 500)
 		return
 	}
 	decorateBooks(books)
 	writeJSON(w, map[string]any{
-		"query":  q,
-		"books":  books,
-		"total":  total,
-		"limit":  limit,
-		"offset": offset,
+		"query":     q.Q,
+		"author":    q.Author,
+		"title":     q.Title,
+		"yearFrom":  q.YearFrom,
+		"yearTo":    q.YearTo,
+		"books":     books,
+		"total":     total,
+		"limit":     limit,
+		"offset":    offset,
 	})
 }
 

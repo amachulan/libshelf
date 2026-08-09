@@ -10,16 +10,26 @@ const readerEl = $("reader");
 const grid = $("grid");
 const empty = $("empty");
 const form = $("search-form");
+const advForm = $("adv-search-form");
+const advPanel = $("adv-search");
+const advToggle = $("search-adv-toggle");
 const qInput = $("q");
+const advTitle = $("adv-title");
+const advAuthor = $("adv-author");
+const advYearFrom = $("adv-year-from");
+const advYearTo = $("adv-year-to");
 const resultsBack = $("results-back");
 const resultsSub = $("results-sub");
 
 const PAGE_SIZE = 60;
 
-let lastQuery = "";
+/** @typedef {{ q: string, title: string, author: string, yearFrom: string, yearTo: string }} SearchParams */
+
+/** @type {SearchParams} */
+let lastSearch = emptySearch();
 let lastBooks = [];
 let listContext = null; // { kind: 'author'|'series'|'genre', id, name }
-/** @type {{ mode: 'search'|'author'|'series'|'genre', key: string|number, page: number, total: number, limit: number } | null} */
+/** @type {{ mode: 'search'|'author'|'series'|'genre', key: string|number|SearchParams, page: number, total: number, limit: number } | null} */
 let resultsPager = null;
 let currentUser = null;
 let currentBookId = null;
@@ -224,20 +234,119 @@ function syncResultsPager() {
   nav.classList.remove("hidden");
 }
 
-function renderResults(query, books, total, page) {
+function emptySearch() {
+  return { q: "", title: "", author: "", yearFrom: "", yearTo: "" };
+}
+
+function readSearchFromForm() {
+  return {
+    q: (qInput.value || "").trim(),
+    title: (advTitle.value || "").trim(),
+    author: (advAuthor.value || "").trim(),
+    yearFrom: (advYearFrom.value || "").trim(),
+    yearTo: (advYearTo.value || "").trim(),
+  };
+}
+
+function writeSearchToForm(s) {
+  const p = s || emptySearch();
+  qInput.value = p.q || "";
+  advTitle.value = p.title || "";
+  advAuthor.value = p.author || "";
+  advYearFrom.value = p.yearFrom || "";
+  advYearTo.value = p.yearTo || "";
+}
+
+function searchHasFilters(s) {
+  return !!(s.q || s.title || s.author || s.yearFrom || s.yearTo);
+}
+
+function searchIsAdvanced(s) {
+  return !!(s.title || s.author || s.yearFrom || s.yearTo);
+}
+
+function searchLabel(s) {
+  const bits = [];
+  if (s.q) bits.push(`«${s.q}»`);
+  if (s.title) bits.push(`назв. «${s.title}»`);
+  if (s.author) bits.push(`авт. «${s.author}»`);
+  if (s.yearFrom && s.yearTo && s.yearFrom === s.yearTo) bits.push(s.yearFrom);
+  else if (s.yearFrom || s.yearTo) {
+    bits.push((s.yearFrom || "…") + "–" + (s.yearTo || "…"));
+  }
+  return bits.length ? bits.join(" · ") : "";
+}
+
+function searchAPIURL(s, page) {
+  const qs = new URLSearchParams();
+  if (s.q) qs.set("q", s.q);
+  if (s.title) qs.set("title", s.title);
+  if (s.author) qs.set("author", s.author);
+  if (s.yearFrom && s.yearTo && s.yearFrom === s.yearTo) {
+    qs.set("year", s.yearFrom);
+  } else {
+    if (s.yearFrom) qs.set("year_from", s.yearFrom);
+    if (s.yearTo) qs.set("year_to", s.yearTo);
+  }
+  qs.set("limit", String(PAGE_SIZE));
+  qs.set("offset", String((Math.max(1, page || 1) - 1) * PAGE_SIZE));
+  return "/api/search?" + qs.toString();
+}
+
+function searchPageURL(s, page) {
+  const qs = new URLSearchParams();
+  if (s.q) qs.set("q", s.q);
+  if (s.title) qs.set("title", s.title);
+  // "au" — текст автора в поиске; "author" занят id страницы автора.
+  if (s.author) qs.set("au", s.author);
+  if (s.yearFrom && s.yearTo && s.yearFrom === s.yearTo) {
+    qs.set("year", s.yearFrom);
+  } else {
+    if (s.yearFrom) qs.set("year_from", s.yearFrom);
+    if (s.yearTo) qs.set("year_to", s.yearTo);
+  }
+  if (page > 1) qs.set("p", String(page));
+  const str = qs.toString();
+  return str ? "/?" + str : "/";
+}
+
+function searchFromURLParams(params) {
+  const year = (params.get("year") || "").trim();
+  let yearFrom = (params.get("year_from") || "").trim();
+  let yearTo = (params.get("year_to") || "").trim();
+  if (year && !yearFrom && !yearTo) {
+    yearFrom = year;
+    yearTo = year;
+  }
+  return {
+    q: (params.get("q") || "").trim(),
+    title: (params.get("title") || "").trim(),
+    author: (params.get("au") || "").trim(),
+    yearFrom,
+    yearTo,
+  };
+}
+
+function setAdvOpen(open) {
+  advPanel.classList.toggle("hidden", !open);
+  advToggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function renderResults(search, books, total, page) {
   listContext = null;
-  lastQuery = query;
+  lastSearch = search || emptySearch();
   lastBooks = books || [];
   resultsPager = {
     mode: "search",
-    key: query,
+    key: lastSearch,
     page: page || 1,
     total: total || lastBooks.length,
     limit: PAGE_SIZE,
   };
   resultsBack.classList.add("hidden");
   resultsSub.classList.remove("hidden");
-  $("results-title").textContent = query ? `Поиск: «${query}»` : "Результаты";
+  const label = searchLabel(lastSearch);
+  $("results-title").textContent = label ? `Поиск: ${label}` : "Результаты";
   resultsSub.textContent = total ? worksLabel(total) : "";
   if (!total) resultsSub.classList.add("hidden");
   renderBookGrid(lastBooks);
@@ -248,7 +357,7 @@ function renderResults(query, books, total, page) {
 function renderNamedList(kind, data, page) {
   listContext = { kind, id: data.id, name: data.name };
   lastBooks = data.books || [];
-  lastQuery = "";
+  lastSearch = emptySearch();
   resultsPager = {
     mode: kind,
     key: kind === "genre" ? data.id : data.id,
@@ -266,11 +375,23 @@ function renderNamedList(kind, data, page) {
   show("results");
 }
 
-async function doSearch(query, page) {
-  query = (query || "").trim();
+async function doSearch(search, page) {
+  const s =
+    typeof search === "string"
+      ? { ...emptySearch(), q: (search || "").trim() }
+      : {
+          q: (search?.q || "").trim(),
+          title: (search?.title || "").trim(),
+          author: (search?.author || "").trim(),
+          yearFrom: String(search?.yearFrom || "").trim(),
+          yearTo: String(search?.yearTo || "").trim(),
+        };
   page = Math.max(1, page || 1);
-  if (!query) {
+  writeSearchToForm(s);
+  if (searchIsAdvanced(s)) setAdvOpen(true);
+  if (!searchHasFilters(s)) {
     listContext = null;
+    lastSearch = emptySearch();
     resultsPager = null;
     syncResultsPager();
     show("home");
@@ -278,16 +399,8 @@ async function doSearch(query, page) {
     loadContinue();
     return;
   }
-  const offset = (page - 1) * PAGE_SIZE;
-  const url =
-    "/api/search?q=" +
-    encodeURIComponent(query) +
-    "&limit=" +
-    PAGE_SIZE +
-    "&offset=" +
-    offset;
-  history.replaceState(null, "", "/?q=" + encodeURIComponent(query) + (page > 1 ? "&p=" + page : ""));
-  const res = await api(url);
+  history.replaceState(null, "", searchPageURL(s, page));
+  const res = await api(searchAPIURL(s, page));
   if (!res.ok) {
     alert("Ошибка поиска: " + (await res.text()));
     return;
@@ -296,9 +409,9 @@ async function doSearch(query, page) {
   const total = data.total || 0;
   const pages = pageCount(total, PAGE_SIZE);
   if (page > pages && total > 0) {
-    return doSearch(query, pages);
+    return doSearch(s, pages);
   }
-  renderResults(query, data.books || [], total, page);
+  renderResults(s, data.books || [], total, page);
   window.scrollTo(0, 0);
 }
 
@@ -340,7 +453,7 @@ async function openSeries(id, page) {
 
 function resultsURLFrom(mode, key, page) {
   const p = page > 1 ? "&p=" + page : "";
-  if (mode === "search") return "/?q=" + encodeURIComponent(key) + p;
+  if (mode === "search") return searchPageURL(typeof key === "string" ? { ...emptySearch(), q: key } : key, page);
   if (mode === "author") return "/?author=" + key + p;
   if (mode === "series") return "/?series=" + key + p;
   if (mode === "genre") return "/?genre=" + encodeURIComponent(key) + p;
@@ -469,7 +582,12 @@ async function openBook(id) {
   currentBookId = b.id;
   const qs = new URLSearchParams();
   qs.set("book", id);
-  if (lastQuery) qs.set("q", lastQuery);
+  if (searchHasFilters(lastSearch)) {
+    const searchQS = new URLSearchParams(searchPageURL(lastSearch, 1).slice(2));
+    searchQS.forEach((v, k) => {
+      if (k !== "p") qs.set(k, v);
+    });
+  }
   if (listContext?.kind === "author") qs.set("author", listContext.id);
   if (listContext?.kind === "series") qs.set("series", listContext.id);
   history.pushState({ book: id }, "", "/?" + qs.toString());
@@ -1137,10 +1255,10 @@ function goBackFromBook() {
     renderNamedList(kind, { id, name, books: lastBooks, total }, page);
     return;
   }
-  if (lastQuery) {
+  if (searchHasFilters(lastSearch)) {
     const page = resultsPager && resultsPager.mode === "search" ? resultsPager.page : 1;
-    history.replaceState(null, "", resultsURLFrom("search", lastQuery, page));
-    renderResults(lastQuery, lastBooks, resultsPager?.total, page);
+    history.replaceState(null, "", resultsURLFrom("search", lastSearch, page));
+    renderResults(lastSearch, lastBooks, resultsPager?.total, page);
   } else {
     resultsPager = null;
     syncResultsPager();
@@ -1152,7 +1270,23 @@ function goBackFromBook() {
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
-  doSearch(qInput.value, 1);
+  doSearch(readSearchFromForm(), 1);
+});
+
+advForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  doSearch(readSearchFromForm(), 1);
+});
+
+advToggle.addEventListener("click", () => {
+  const open = advPanel.classList.contains("hidden");
+  setAdvOpen(open);
+  if (open) advAuthor.focus();
+});
+
+$("adv-search-clear").addEventListener("click", () => {
+  writeSearchToForm(emptySearch());
+  qInput.focus();
 });
 
 $("pager-prev").addEventListener("click", () => goResultsPage(-1));
@@ -1172,9 +1306,9 @@ document.querySelectorAll("#shelf-tabs .shelf-pill").forEach((btn) => {
 });
 
 resultsBack.addEventListener("click", () => {
-  if (lastQuery) {
-    history.replaceState(null, "", "/?q=" + encodeURIComponent(lastQuery));
-    doSearch(lastQuery);
+  if (searchHasFilters(lastSearch)) {
+    history.replaceState(null, "", searchPageURL(lastSearch, 1));
+    doSearch(lastSearch, 1);
     return;
   }
   if (listContext?.kind === "genre") {
@@ -1316,9 +1450,10 @@ async function bootFromURL() {
   const catalog = params.get("catalog");
   const letter = params.get("letter") || "";
   const lists = params.get("lists");
-  const q = params.get("q") || "";
+  const search = searchFromURLParams(params);
   const page = Math.max(1, parseInt(params.get("p") || "1", 10) || 1);
-  qInput.value = q;
+  writeSearchToForm(search);
+  if (searchIsAdvanced(search)) setAdvOpen(true);
 
   if (read) {
     await openReader(read);
@@ -1347,14 +1482,14 @@ async function bootFromURL() {
   if (book) {
     if (author) listContext = { kind: "author", id: Number(author) };
     if (series) listContext = { kind: "series", id: Number(series) };
-    if (q && lastBooks.length === 0) {
-      await doSearch(q, page);
+    if (searchHasFilters(search) && lastBooks.length === 0) {
+      await doSearch(search, page);
     }
     await openBook(book);
     return;
   }
-  if (q) {
-    await doSearch(q, page);
+  if (searchHasFilters(search)) {
+    await doSearch(search, page);
     return;
   }
   show("home");
@@ -1411,8 +1546,11 @@ $("nav-home").addEventListener("click", (e) => {
   e.preventDefault();
   history.pushState(null, "", "/");
   listContext = null;
-  lastQuery = "";
-  qInput.value = "";
+  lastSearch = emptySearch();
+  writeSearchToForm(lastSearch);
+  setAdvOpen(false);
+  resultsPager = null;
+  syncResultsPager();
   show("home");
   loadContinue();
 });

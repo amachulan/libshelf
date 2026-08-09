@@ -302,6 +302,96 @@ body {
   filter: none;
 }
 
+.search-adv-toggle {
+  flex: 0 0 auto;
+  height: auto;
+  align-self: stretch;
+  padding: 0 0.55rem;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.search-adv-toggle:hover,
+.search-adv-toggle[aria-expanded="true"] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--line) 40%, transparent);
+}
+
+.adv-search {
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 88%, var(--bg));
+  padding: 0.75rem max(1.25rem, env(safe-area-inset-right)) 0.85rem max(1.25rem, env(safe-area-inset-left));
+}
+
+.adv-search-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem 0.85rem;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.adv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 10rem;
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.adv-field input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.adv-field-year {
+  flex: 0 1 11rem;
+}
+
+.adv-year-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.adv-year-row input {
+  flex: 1 1 0;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-year-sep {
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.adv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  padding-bottom: 1px;
+}
+
+.adv-actions .btn {
+  height: var(--control-height);
+}
+
 .btn:hover,
 .login-card button:hover,
 .user-form .btn:hover {
@@ -1207,11 +1297,18 @@ body.reader-pages .reader-content .fb2-img {
   }
   /* 16px avoids iOS focus-zoom that shifts the sticky header sideways. */
   .search input,
+  .adv-field input,
   .field,
   .login-card input,
   .user-form input,
   .user-form select {
     font-size: 16px;
+  }
+  .adv-search-form {
+    max-width: none;
+  }
+  .adv-field-year {
+    flex: 1 1 100%;
   }
 }
 
