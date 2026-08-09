@@ -8,7 +8,10 @@ import (
 )
 
 const (
+	// FTS already ranks; keep a window before edition grouping.
 	searchCandidateCap = 2000
+	// Year/added-only filters have no rank — need enough rows to group editions.
+	filterCandidateCap = 250_000
 	maxEditions        = 40
 	listGroupCap       = 5000
 )

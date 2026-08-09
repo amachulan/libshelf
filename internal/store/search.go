@@ -155,18 +155,19 @@ WHERE b.deleted = 0` + lang)
 	if match != "" {
 		sb.WriteString(`
 ORDER BY bm25(book_search, 2.0, 8.0, 4.0), b.title
-`)
+LIMIT ?`)
+		args = append(args, searchCandidateCap)
 	} else if q.hasAdded() {
 		sb.WriteString(`
 ORDER BY b.added DESC, b.title
-`)
+LIMIT ?`)
+		args = append(args, filterCandidateCap)
 	} else {
 		sb.WriteString(`
 ORDER BY coalesce(b.year, 0) DESC, b.title
-`)
+LIMIT ?`)
+		args = append(args, filterCandidateCap)
 	}
-	sb.WriteString(`LIMIT ?`)
-	args = append(args, searchCandidateCap)
 
 	rows, err := s.db.Query(sb.String(), args...)
 	if err != nil {
