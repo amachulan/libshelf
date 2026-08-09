@@ -31,6 +31,9 @@ const PAGE_SIZE = 60;
 let lastSearch = emptySearch();
 let lastBooks = [];
 let listContext = null; // { kind: 'author'|'series'|'genre', id, name }
+/** Where ← on a named list should go (book page / catalog / search). */
+/** @type {{ type: 'book', id: number } | { type: 'catalog', tab: string, letter: string } | { type: 'search' } | null} */
+let listReturn = null;
 /** @type {{ mode: 'search'|'author'|'series'|'genre', key: string|number|SearchParams, page: number, total: number, limit: number } | null} */
 let resultsPager = null;
 let currentUser = null;
@@ -378,7 +381,6 @@ function renderResults(search, books, total, page) {
 function renderNamedList(kind, data, page) {
   listContext = { kind, id: data.id, name: data.name };
   lastBooks = data.books || [];
-  lastSearch = emptySearch();
   resultsPager = {
     mode: kind,
     key: kind === "genre" ? data.id : data.id,
@@ -625,7 +627,12 @@ async function openBook(id) {
   } else {
     authors.forEach((a, i) => {
       if (i) authorsEl.appendChild(document.createTextNode(", "));
-      authorsEl.appendChild(linkButton(a.name, () => openAuthor(a.id)));
+      authorsEl.appendChild(
+        linkButton(a.name, () => {
+          listReturn = { type: "book", id: currentBookId };
+          openAuthor(a.id);
+        })
+      );
     });
   }
 
@@ -634,7 +641,12 @@ async function openBook(id) {
   if (b.series && b.seriesId) {
     seriesEl.appendChild(document.createTextNode("Серия: "));
     const label = b.seriesNum ? `${b.series} — ${b.seriesNum}` : b.series;
-    seriesEl.appendChild(linkButton(label, () => openSeries(b.seriesId)));
+    seriesEl.appendChild(
+      linkButton(label, () => {
+        listReturn = { type: "book", id: currentBookId };
+        openSeries(b.seriesId);
+      })
+    );
   } else if (b.series) {
     seriesEl.textContent = b.seriesNum ? `${b.series} — ${b.seriesNum}` : b.series;
   }
@@ -1146,6 +1158,7 @@ function renderCatalogRows(items, kind) {
     row.querySelector(".catalog-name").textContent = name;
     row.querySelector(".catalog-count").textContent = formatNum(it.books);
     row.addEventListener("click", () => {
+      listReturn = { type: "catalog", tab: kind, letter: catalogLetter || "" };
       if (kind === "authors") openAuthor(it.id);
       else if (kind === "series") openSeries(it.id);
       else if (kind === "genres") openGenre(it.code);
@@ -1280,15 +1293,49 @@ function goBackFromBook() {
   }
   if (searchHasFilters(lastSearch)) {
     const page = resultsPager && resultsPager.mode === "search" ? resultsPager.page : 1;
-    history.replaceState(null, "", resultsURLFrom("search", lastSearch, page));
-    renderResults(lastSearch, lastBooks, resultsPager?.total, page);
+    doSearch(lastSearch, page);
   } else {
+    listReturn = null;
     resultsPager = null;
     syncResultsPager();
     history.replaceState(null, "", "/");
     show("home");
     loadContinue();
   }
+}
+
+function goBackFromNamedList() {
+  const ret = listReturn;
+  listReturn = null;
+  if (ret?.type === "book") {
+    openBook(ret.id);
+    return;
+  }
+  if (ret?.type === "search" || searchHasFilters(lastSearch)) {
+    const page = resultsPager && resultsPager.mode === "search" ? resultsPager.page : 1;
+    doSearch(lastSearch, page);
+    return;
+  }
+  if (ret?.type === "catalog") {
+    openCatalog(ret.tab, ret.letter || "");
+    return;
+  }
+  if (listContext?.kind === "genre") {
+    openCatalog("genres", "");
+    return;
+  }
+  if (listContext?.kind === "author") {
+    openCatalog("authors", catalogLetter || "");
+    return;
+  }
+  if (listContext?.kind === "series") {
+    openCatalog("series", catalogLetter || "");
+    return;
+  }
+  history.replaceState(null, "", "/");
+  listContext = null;
+  show("home");
+  loadContinue();
 }
 
 form.addEventListener("submit", (e) => {
@@ -1329,27 +1376,7 @@ document.querySelectorAll("#shelf-tabs .shelf-pill").forEach((btn) => {
 });
 
 resultsBack.addEventListener("click", () => {
-  if (searchHasFilters(lastSearch)) {
-    history.replaceState(null, "", searchPageURL(lastSearch, 1));
-    doSearch(lastSearch, 1);
-    return;
-  }
-  if (listContext?.kind === "genre") {
-    openCatalog("genres", "");
-    return;
-  }
-  if (listContext?.kind === "author") {
-    openCatalog("authors", catalogLetter || "");
-    return;
-  }
-  if (listContext?.kind === "series") {
-    openCatalog("series", catalogLetter || "");
-    return;
-  }
-  history.replaceState(null, "", "/");
-  listContext = null;
-  show("home");
-  loadContinue();
+  goBackFromNamedList();
 });
 
 window.addEventListener("popstate", () => {
@@ -1569,6 +1596,7 @@ $("nav-home").addEventListener("click", (e) => {
   e.preventDefault();
   history.pushState(null, "", "/");
   listContext = null;
+  listReturn = null;
   lastSearch = emptySearch();
   writeSearchToForm(lastSearch);
   setAdvOpen(false);
