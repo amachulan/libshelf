@@ -101,33 +101,48 @@ func paginateBooks(books []Book, limit, offset int) ([]Book, int) {
 	return books[offset:end], total
 }
 
+// sqliteMaxVars keeps IN (?) batches under SQLite's default variable limit (999).
+const sqliteMaxVars = 400
+
 func (s *Store) authorIDsForBooks(bookIDs []int64) (map[int64][]int64, error) {
 	out := make(map[int64][]int64, len(bookIDs))
 	if len(bookIDs) == 0 {
 		return out, nil
 	}
-	placeholders := make([]string, len(bookIDs))
-	args := make([]any, len(bookIDs))
-	for i, id := range bookIDs {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	rows, err := s.db.Query(`
+	for start := 0; start < len(bookIDs); start += sqliteMaxVars {
+		end := start + sqliteMaxVars
+		if end > len(bookIDs) {
+			end = len(bookIDs)
+		}
+		chunk := bookIDs[start:end]
+		placeholders := make([]string, len(chunk))
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+		rows, err := s.db.Query(`
 SELECT book_id, author_id FROM book_authors
 WHERE book_id IN (`+strings.Join(placeholders, ",")+`)
 ORDER BY book_id, author_id`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var bookID, authorID int64
-		if err := rows.Scan(&bookID, &authorID); err != nil {
+		if err != nil {
 			return nil, err
 		}
-		out[bookID] = append(out[bookID], authorID)
+		for rows.Next() {
+			var bookID, authorID int64
+			if err := rows.Scan(&bookID, &authorID); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[bookID] = append(out[bookID], authorID)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func (s *Store) groupAndPaginate(books []Book, limit, offset int) ([]Book, int, error) {
