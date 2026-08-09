@@ -205,7 +205,7 @@ func (s *Server) opdsSearch(w http.ResponseWriter, r *http.Request, base string)
 	if limit <= 0 {
 		limit = 40
 	}
-	books, err := s.store.Search(q, limit)
+	books, _, err := s.store.Search(q, limit, 0)
 	if err != nil {
 		httpError(w, err, 500)
 		return

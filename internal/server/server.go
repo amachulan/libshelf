@@ -242,13 +242,23 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	books, err := s.store.Search(q, limit)
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if limit <= 0 {
+		limit = 60
+	}
+	books, total, err := s.store.Search(q, limit, offset)
 	if err != nil {
 		httpError(w, err, 500)
 		return
 	}
 	decorateBooks(books)
-	writeJSON(w, map[string]any{"query": q, "books": books})
+	writeJSON(w, map[string]any{
+		"query":  q,
+		"books":  books,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
 }
 
 func (s *Server) handleBook(w http.ResponseWriter, r *http.Request) {

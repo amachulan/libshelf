@@ -14,9 +14,13 @@ const qInput = $("q");
 const resultsBack = $("results-back");
 const resultsSub = $("results-sub");
 
+const PAGE_SIZE = 60;
+
 let lastQuery = "";
 let lastBooks = [];
 let listContext = null; // { kind: 'author'|'series'|'genre', id, name }
+/** @type {{ mode: 'search'|'author'|'series'|'genre', key: string|number, page: number, total: number, limit: number } | null} */
+let resultsPager = null;
 let currentUser = null;
 let currentBookId = null;
 let currentShelfStatus = "";
@@ -173,68 +177,162 @@ function renderBookGrid(books, target = grid, emptyEl = empty) {
   }
 }
 
-function renderResults(query, books) {
+function pageCount(total, limit) {
+  return Math.max(1, Math.ceil((total || 0) / (limit || PAGE_SIZE)));
+}
+
+function syncResultsPager() {
+  const nav = $("results-pager");
+  const prev = $("pager-prev");
+  const next = $("pager-next");
+  const status = $("pager-status");
+  if (!resultsPager || resultsPager.total <= resultsPager.limit) {
+    nav.classList.add("hidden");
+    return;
+  }
+  const { page, total, limit } = resultsPager;
+  const pages = pageCount(total, limit);
+  const from = (page - 1) * limit + 1;
+  const to = Math.min(page * limit, total);
+  status.textContent = `${from}–${to} из ${formatNum(total)} · стр. ${page}/${pages}`;
+  prev.disabled = page <= 1;
+  next.disabled = page >= pages;
+  nav.classList.remove("hidden");
+}
+
+function renderResults(query, books, total, page) {
   listContext = null;
   lastQuery = query;
   lastBooks = books || [];
+  resultsPager = {
+    mode: "search",
+    key: query,
+    page: page || 1,
+    total: total || lastBooks.length,
+    limit: PAGE_SIZE,
+  };
   resultsBack.classList.add("hidden");
-  resultsSub.classList.add("hidden");
+  resultsSub.classList.remove("hidden");
   $("results-title").textContent = query ? `Поиск: «${query}»` : "Результаты";
+  resultsSub.textContent = total ? `${formatNum(total)} книг` : "";
+  if (!total) resultsSub.classList.add("hidden");
   renderBookGrid(lastBooks);
+  syncResultsPager();
   show("results");
 }
 
-function renderNamedList(kind, data) {
+function renderNamedList(kind, data, page) {
   listContext = { kind, id: data.id, name: data.name };
   lastBooks = data.books || [];
+  lastQuery = "";
+  resultsPager = {
+    mode: kind,
+    key: kind === "genre" ? data.id : data.id,
+    page: page || 1,
+    total: data.total || lastBooks.length,
+    limit: PAGE_SIZE,
+  };
   resultsBack.classList.remove("hidden");
   resultsSub.classList.remove("hidden");
-  const label = kind === "author" ? "Автор" : "Серия";
+  const label = kind === "author" ? "Автор" : kind === "series" ? "Серия" : "Жанр";
   $("results-title").textContent = `${label}: ${data.name}`;
   resultsSub.textContent = `${formatNum(data.total)} книг`;
   renderBookGrid(lastBooks);
+  syncResultsPager();
   show("results");
 }
 
-async function doSearch(query) {
+async function doSearch(query, page) {
   query = (query || "").trim();
+  page = Math.max(1, page || 1);
   if (!query) {
     listContext = null;
+    resultsPager = null;
+    syncResultsPager();
     show("home");
     history.replaceState(null, "", "/");
     loadContinue();
     return;
   }
-  history.replaceState(null, "", "/?q=" + encodeURIComponent(query));
-  const res = await api("/api/search?q=" + encodeURIComponent(query) + "&limit=60");
+  const offset = (page - 1) * PAGE_SIZE;
+  const url =
+    "/api/search?q=" +
+    encodeURIComponent(query) +
+    "&limit=" +
+    PAGE_SIZE +
+    "&offset=" +
+    offset;
+  history.replaceState(null, "", "/?q=" + encodeURIComponent(query) + (page > 1 ? "&p=" + page : ""));
+  const res = await api(url);
   if (!res.ok) {
     alert("Ошибка поиска: " + (await res.text()));
     return;
   }
   const data = await res.json();
-  renderResults(query, data.books || []);
+  const total = data.total || 0;
+  const pages = pageCount(total, PAGE_SIZE);
+  if (page > pages && total > 0) {
+    return doSearch(query, pages);
+  }
+  renderResults(query, data.books || [], total, page);
+  window.scrollTo(0, 0);
 }
 
-async function openAuthor(id) {
-  const res = await api("/api/author/" + id + "?limit=100");
+async function openAuthor(id, page) {
+  page = Math.max(1, page || 1);
+  const offset = (page - 1) * PAGE_SIZE;
+  const res = await api("/api/author/" + id + "?limit=" + PAGE_SIZE + "&offset=" + offset);
   if (!res.ok) {
     alert("Автор недоступен");
     return;
   }
   const data = await res.json();
-  history.pushState({ author: id }, "", "/?author=" + id);
-  renderNamedList("author", data);
+  const pages = pageCount(data.total, PAGE_SIZE);
+  if (page > pages && data.total > 0) {
+    return openAuthor(id, pages);
+  }
+  history.pushState({ author: id, p: page }, "", resultsURLFrom("author", id, page));
+  renderNamedList("author", data, page);
+  window.scrollTo(0, 0);
 }
 
-async function openSeries(id) {
-  const res = await api("/api/series/" + id + "?limit=100");
+async function openSeries(id, page) {
+  page = Math.max(1, page || 1);
+  const offset = (page - 1) * PAGE_SIZE;
+  const res = await api("/api/series/" + id + "?limit=" + PAGE_SIZE + "&offset=" + offset);
   if (!res.ok) {
     alert("Серия недоступна");
     return;
   }
   const data = await res.json();
-  history.pushState({ series: id }, "", "/?series=" + id);
-  renderNamedList("series", data);
+  const pages = pageCount(data.total, PAGE_SIZE);
+  if (page > pages && data.total > 0) {
+    return openSeries(id, pages);
+  }
+  history.pushState({ series: id, p: page }, "", resultsURLFrom("series", id, page));
+  renderNamedList("series", data, page);
+  window.scrollTo(0, 0);
+}
+
+function resultsURLFrom(mode, key, page) {
+  const p = page > 1 ? "&p=" + page : "";
+  if (mode === "search") return "/?q=" + encodeURIComponent(key) + p;
+  if (mode === "author") return "/?author=" + key + p;
+  if (mode === "series") return "/?series=" + key + p;
+  if (mode === "genre") return "/?genre=" + encodeURIComponent(key) + p;
+  return "/";
+}
+
+async function goResultsPage(delta) {
+  if (!resultsPager) return;
+  const page = resultsPager.page + delta;
+  const pages = pageCount(resultsPager.total, resultsPager.limit);
+  if (page < 1 || page > pages) return;
+  const { mode, key } = resultsPager;
+  if (mode === "search") return doSearch(key, page);
+  if (mode === "author") return openAuthor(key, page);
+  if (mode === "series") return openSeries(key, page);
+  if (mode === "genre") return openGenre(key, page);
 }
 
 function linkButton(text, onClick) {
@@ -833,22 +931,25 @@ function renderCatalogRows(items, kind) {
   }
 }
 
-async function openGenre(code) {
-  const res = await api("/api/catalog/genres/" + encodeURIComponent(code) + "?limit=100");
+async function openGenre(code, page) {
+  page = Math.max(1, page || 1);
+  const offset = (page - 1) * PAGE_SIZE;
+  const res = await api(
+    "/api/catalog/genres/" + encodeURIComponent(code) + "?limit=" + PAGE_SIZE + "&offset=" + offset
+  );
   if (!res.ok) {
     alert("Жанр недоступен");
     return;
   }
   const data = await res.json();
-  history.pushState({ genre: code }, "", "/?genre=" + encodeURIComponent(code));
-  listContext = { kind: "genre", id: code, name: data.name };
-  lastBooks = data.books || [];
-  resultsBack.classList.remove("hidden");
-  resultsSub.classList.remove("hidden");
-  $("results-title").textContent = `Жанр: ${data.name}`;
-  resultsSub.textContent = `${formatNum(data.total)} книг`;
-  renderBookGrid(lastBooks);
-  show("results");
+  data.id = code;
+  const pages = pageCount(data.total, PAGE_SIZE);
+  if (page > pages && data.total > 0) {
+    return openGenre(code, pages);
+  }
+  history.pushState({ genre: code, p: page }, "", resultsURLFrom("genre", code, page));
+  renderNamedList("genre", data, page);
+  window.scrollTo(0, 0);
 }
 
 function setCatalogLoading(on) {
@@ -947,27 +1048,20 @@ async function openLists(status) {
 
 function goBackFromBook() {
   if (listContext) {
-    const { kind, id } = listContext;
-    if (kind === "author") {
-      history.replaceState({ author: id }, "", "/?author=" + id);
-      openAuthor(id);
-      return;
-    }
-    if (kind === "series") {
-      history.replaceState({ series: id }, "", "/?series=" + id);
-      openSeries(id);
-      return;
-    }
-    if (kind === "genre") {
-      history.replaceState({ genre: id }, "", "/?genre=" + encodeURIComponent(id));
-      openGenre(id);
-      return;
-    }
+    const { kind, id, name } = listContext;
+    const page = resultsPager && resultsPager.mode === kind ? resultsPager.page : 1;
+    const total = resultsPager ? resultsPager.total : lastBooks.length;
+    history.replaceState({ [kind]: id, p: page }, "", resultsURLFrom(kind, id, page));
+    renderNamedList(kind, { id, name, books: lastBooks, total }, page);
+    return;
   }
   if (lastQuery) {
-    history.replaceState(null, "", "/?q=" + encodeURIComponent(lastQuery));
-    renderResults(lastQuery, lastBooks);
+    const page = resultsPager && resultsPager.mode === "search" ? resultsPager.page : 1;
+    history.replaceState(null, "", resultsURLFrom("search", lastQuery, page));
+    renderResults(lastQuery, lastBooks, resultsPager?.total, page);
   } else {
+    resultsPager = null;
+    syncResultsPager();
     history.replaceState(null, "", "/");
     show("home");
     loadContinue();
@@ -976,8 +1070,11 @@ function goBackFromBook() {
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
-  doSearch(qInput.value);
+  doSearch(qInput.value, 1);
 });
+
+$("pager-prev").addEventListener("click", () => goResultsPage(-1));
+$("pager-next").addEventListener("click", () => goResultsPage(1));
 
 $("back").addEventListener("click", goBackFromBook);
 $("book-read").addEventListener("click", () => {
@@ -1138,6 +1235,7 @@ async function bootFromURL() {
   const letter = params.get("letter") || "";
   const lists = params.get("lists");
   const q = params.get("q") || "";
+  const page = Math.max(1, parseInt(params.get("p") || "1", 10) || 1);
   qInput.value = q;
 
   if (read) {
@@ -1153,28 +1251,28 @@ async function bootFromURL() {
     return;
   }
   if (genre && !book) {
-    await openGenre(genre);
+    await openGenre(genre, page);
     return;
   }
   if (author && !book) {
-    await openAuthor(author);
+    await openAuthor(author, page);
     return;
   }
   if (series && !book) {
-    await openSeries(series);
+    await openSeries(series, page);
     return;
   }
   if (book) {
     if (author) listContext = { kind: "author", id: Number(author) };
     if (series) listContext = { kind: "series", id: Number(series) };
     if (q && lastBooks.length === 0) {
-      await doSearch(q);
+      await doSearch(q, page);
     }
     await openBook(book);
     return;
   }
   if (q) {
-    await doSearch(q);
+    await doSearch(q, page);
     return;
   }
   show("home");
