@@ -8,7 +8,9 @@ import (
 
 // ftsQuery builds an FTS5 expression where every token must match
 // somewhere in the row (title OR authors OR series), not a single column.
+// Token order does not matter (FTS5 AND), so "кинг стивен" ≡ "стивен кинг".
 func ftsQuery(input string) string {
+	input = foldYo(input)
 	var terms []string
 	for _, tok := range strings.FieldsFunc(input, func(r rune) bool {
 		return !isWordRune(r)

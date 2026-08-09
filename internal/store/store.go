@@ -31,6 +31,10 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("index: %w", err)
 		}
 	}
+	if err := s.EnsureSearchIndex(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("search index: %w", err)
+	}
 	return s, nil
 }
 

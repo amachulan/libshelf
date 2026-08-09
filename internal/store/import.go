@@ -134,6 +134,7 @@ func (s *Store) clearCatalog() error {
 	defer tx.Rollback()
 	for _, q := range []string{
 		`DELETE FROM book_search`,
+		`DELETE FROM meta WHERE key = 'search_index_version'`,
 		`DELETE FROM book_genres`,
 		`DELETE FROM book_authors`,
 		`DELETE FROM books`,
@@ -372,25 +373,8 @@ func (im *importSession) finish() (ImportStats, error) {
 			return im.stats, fmt.Errorf("index: %w", err)
 		}
 	}
-	if _, err := im.s.db.Exec(`DELETE FROM book_search`); err != nil {
-		return im.stats, err
-	}
-	// Index only russian non-deleted books for search.
-	if _, err := im.s.db.Exec(`
-INSERT INTO book_search (rowid, title, authors, series)
-SELECT b.id,
-       b.title,
-       coalesce((SELECT group_concat(trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name), ' ')
-                 FROM book_authors ba JOIN authors a ON a.id = ba.author_id
-                 WHERE ba.book_id = b.id), ''),
-       coalesce(s.title, '')
-FROM books b
-LEFT JOIN series s ON s.id = b.series_id
-WHERE b.deleted = 0 AND b.lang = 'ru'`); err != nil {
+	if err := im.s.RebuildSearchIndex(); err != nil {
 		return im.stats, fmt.Errorf("search index: %w", err)
-	}
-	if _, err := im.s.db.Exec(`ANALYZE`); err != nil {
-		return im.stats, err
 	}
 	im.stats.Authors = len(im.authors)
 	im.stats.Series = len(im.series)
