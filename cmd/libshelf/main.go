@@ -55,7 +55,7 @@ Usage:
   libshelf start           [--config FILE] [--addr HOST:PORT] [--no-browser]
   libshelf import          --inpx FILE [--inpx FILE ...] --library-dir DIR --data-dir DIR [--replace|--append]
   libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db DIR/FILE) [options]
-  libshelf serve           --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
+  libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
   libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
   libshelf version
 
@@ -67,9 +67,12 @@ Dedupe example (old library stays untouched; clean the newly downloaded dump):
     --library-dir /data/flibusta-new \
     --prune-empty-archives
 
-Then copy remaining new archives into the main library dir and:
+Then append the cleaned catalog (archives may stay in the new folder):
   libshelf import --append --inpx /data/flibusta-new/catalog.unique.inpx \
     --library-dir /opt/libshelf/library --data-dir /opt/libshelf/data
+  # serve with both roots:
+  libshelf serve --library-dir /opt/libshelf/library --library-dir /data/flibusta-new \
+    --data-dir /opt/libshelf/data
 
 Windows: download libshelf-windows-amd64.exe, double-click it, finish setup in the browser.
 
@@ -157,7 +160,7 @@ func runStart(args []string) {
 				}
 			}
 		}
-		if cfg.LibraryDir == "" {
+		if len(cfg.AllLibraryDirs()) == 0 {
 			log.Fatal("library_dir is empty; edit libshelf.json or delete the database to run setup again")
 		}
 	}
@@ -169,7 +172,7 @@ func runStart(args []string) {
 		Store:        st,
 		Auth:         auther,
 		AuthRequired: authRequired,
-		LibDir:       cfg.LibraryDir,
+		LibDirs:      cfg.AllLibraryDirs(),
 		CoverDir:     coverDir,
 		SetupMode:    needSetup,
 		ConfigPath:   path,
@@ -323,13 +326,14 @@ func runDedupe(args []string) {
 
 func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	libDir := fs.String("library-dir", "", "directory with book archives")
+	var libDirs stringList
+	fs.Var(&libDirs, "library-dir", "directory with book archives (repeatable)")
 	dataDir := fs.String("data-dir", "", "directory for SQLite database and cover cache")
 	addr := fs.String("addr", "127.0.0.1:12380", "listen address")
 	authMode := fs.String("auth", "users", "auth mode: users (login required) or none")
 	open := fs.Bool("open", false, "open the library in a browser")
 	_ = fs.Parse(args)
-	if *libDir == "" || *dataDir == "" {
+	if len(libDirs) == 0 || *dataDir == "" {
 		fs.Usage()
 		os.Exit(2)
 	}
@@ -382,11 +386,12 @@ func runServe(args []string) {
 		Store:        st,
 		Auth:         auther,
 		AuthRequired: authRequired,
-		LibDir:       *libDir,
+		LibDirs:      []string(libDirs),
 		CoverDir:     coverDir,
 	})
 	url := "http://" + *addr + "/"
-	log.Printf("listening on %s (%d books, auth=%s, commit=%s)", url, n, mode, version.Short())
+	log.Printf("listening on %s (%d books, auth=%s, lib_dirs=%d, commit=%s)",
+		url, n, mode, len(libDirs), version.Short())
 	if *open {
 		go func() {
 			time.Sleep(350 * time.Millisecond)

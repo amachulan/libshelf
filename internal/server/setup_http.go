@@ -273,7 +273,7 @@ func (s *Server) runSetupImport(inpxPath, libraryDir, dataDir, authMode string, 
 	s.store = st
 	s.auth = auther
 	s.authRequired = authMode == "users"
-	s.libDir = libraryDir
+	s.libDirs = normalizeLibDirs(nil, libraryDir)
 	s.coverDir = coverDir
 	s.config = cfg
 	s.setupMode.Store(false)

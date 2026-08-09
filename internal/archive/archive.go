@@ -17,23 +17,41 @@ import (
 // folder is the archive name (e.g. f.fb2-000001-025000.zip),
 // file is the entry name without extension, ext is e.g. "fb2".
 func OpenBook(libraryDir, folder, file, ext string) ([]byte, error) {
-	archivePath := filepath.Join(libraryDir, folder)
+	return OpenBookDirs([]string{libraryDir}, folder, file, ext)
+}
+
+// OpenBookDirs looks for the archive in each library directory (first hit wins).
+func OpenBookDirs(libraryDirs []string, folder, file, ext string) ([]byte, error) {
+	if len(libraryDirs) == 0 {
+		return nil, fmt.Errorf("no library directories configured")
+	}
 	entryName := file
 	if ext != "" && !strings.HasSuffix(strings.ToLower(file), "."+strings.ToLower(ext)) {
 		entryName = file + "." + ext
 	}
-	data, err := readEntry(archivePath, entryName)
-	if err != nil {
-		// Some catalogs store bare id without matching extension casing.
-		alt := strings.TrimSuffix(file, filepath.Ext(file)) + "." + ext
+	alt := strings.TrimSuffix(file, filepath.Ext(file)) + "." + ext
+
+	var lastErr error
+	for _, libraryDir := range libraryDirs {
+		if strings.TrimSpace(libraryDir) == "" {
+			continue
+		}
+		archivePath := filepath.Join(libraryDir, folder)
+		data, err := readEntry(archivePath, entryName)
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
 		if alt != entryName {
 			if data2, err2 := readEntry(archivePath, alt); err2 == nil {
 				return data2, nil
 			}
 		}
-		return nil, err
 	}
-	return data, nil
+	if lastErr == nil {
+		lastErr = fmt.Errorf("archive %s not found in library dirs", folder)
+	}
+	return nil, lastErr
 }
 
 func readEntry(archivePath, entryName string) ([]byte, error) {

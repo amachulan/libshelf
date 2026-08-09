@@ -9,12 +9,35 @@ import (
 const FileName = "libshelf.json"
 
 type Config struct {
-	Addr        string `json:"addr"`
-	LibraryDir  string `json:"library_dir"`
-	DataDir     string `json:"data_dir"`
-	INPX        string `json:"inpx"`
-	Auth        string `json:"auth"`
-	OpenBrowser bool   `json:"open_browser"`
+	Addr         string   `json:"addr"`
+	LibraryDir   string   `json:"library_dir"`
+	LibraryDirs  []string `json:"library_dirs,omitempty"`
+	DataDir      string   `json:"data_dir"`
+	INPX         string   `json:"inpx"`
+	Auth         string   `json:"auth"`
+	OpenBrowser  bool     `json:"open_browser"`
+}
+
+// AllLibraryDirs returns unique library roots (library_dirs + library_dir).
+func (c Config) AllLibraryDirs() []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(d string) {
+		d = filepath.Clean(d)
+		if d == "" || d == "." {
+			return
+		}
+		if _, ok := seen[d]; ok {
+			return
+		}
+		seen[d] = struct{}{}
+		out = append(out, d)
+	}
+	for _, d := range c.LibraryDirs {
+		add(d)
+	}
+	add(c.LibraryDir)
+	return out
 }
 
 func ExeDir() string {

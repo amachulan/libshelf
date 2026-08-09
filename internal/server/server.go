@@ -31,23 +31,24 @@ type Server struct {
 	store        *store.Store
 	auth         *auth.Auth
 	authRequired bool
-	libDir       string
+	libDirs      []string
 	coverDir     string
 	assetVer     string
 	mux          *http.ServeMux
-	coverMu    sync.Mutex
-	mu         sync.Mutex
-	setupMode  atomic.Bool
-	configPath string
-	config     appconfig.Config
-	setup      *setupRuntime
+	coverMu      sync.Mutex
+	mu           sync.Mutex
+	setupMode    atomic.Bool
+	configPath   string
+	config       appconfig.Config
+	setup        *setupRuntime
 }
 
 type Options struct {
 	Store        *store.Store
 	Auth         *auth.Auth
 	AuthRequired bool
-	LibDir       string
+	LibDir       string   // legacy single dir
+	LibDirs      []string // preferred; merged with LibDir
 	CoverDir     string
 	SetupMode    bool
 	ConfigPath   string
@@ -59,7 +60,7 @@ func New(opts Options) *Server {
 		store:        opts.Store,
 		auth:         opts.Auth,
 		authRequired: opts.AuthRequired,
-		libDir:       opts.LibDir,
+		libDirs:      normalizeLibDirs(opts.LibDirs, opts.LibDir),
 		coverDir:     opts.CoverDir,
 		assetVer:     staticAssetVersion(web.FS),
 		mux:          http.NewServeMux(),
@@ -72,6 +73,31 @@ func New(opts Options) *Server {
 	}
 	s.routes()
 	return s
+}
+
+func normalizeLibDirs(dirs []string, legacy string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(d string) {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			return
+		}
+		if _, ok := seen[d]; ok {
+			return
+		}
+		seen[d] = struct{}{}
+		out = append(out, d)
+	}
+	for _, d := range dirs {
+		add(d)
+	}
+	add(legacy)
+	return out
+}
+
+func (s *Server) openBookFile(folder, file, ext string) ([]byte, error) {
+	return archive.OpenBookDirs(s.libDirs, folder, file, ext)
 }
 
 func staticAssetVersion(fsys fs.FS) string {
@@ -370,7 +396,7 @@ func (s *Server) readerDoc(id int64) (*fb2.ReaderDoc, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := archive.OpenBook(s.libDir, bf.Folder, bf.File, bf.Ext)
+	raw, err := s.openBookFile(bf.Folder, bf.File, bf.Ext)
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +476,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	data, err := archive.OpenBook(s.libDir, bf.Folder, bf.File, bf.Ext)
+	data, err := s.openBookFile(bf.Folder, bf.File, bf.Ext)
 	if err != nil {
 		httpError(w, err, 404)
 		return
@@ -502,7 +528,7 @@ func (s *Server) extractCover(id int64) (*fb2.Cover, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := archive.OpenBook(s.libDir, bf.Folder, bf.File, bf.Ext)
+	data, err := s.openBookFile(bf.Folder, bf.File, bf.Ext)
 	if err != nil {
 		return nil, err
 	}
@@ -521,7 +547,7 @@ func (s *Server) bookMeta(id int64) (*fb2.Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := archive.OpenBook(s.libDir, bf.Folder, bf.File, bf.Ext)
+	raw, err := s.openBookFile(bf.Folder, bf.File, bf.Ext)
 	if err != nil {
 		return nil, err
 	}

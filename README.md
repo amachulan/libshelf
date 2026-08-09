@@ -125,8 +125,7 @@ curl -s http://127.0.0.1:12380/health
 
 Сначала можно добавить `--dry-run`, чтобы только увидеть список архивов на удаление.
 
-3. Оставшиеся архивы нового дампа скопировать/перенести в основной `--library-dir`.
-4. Дописать каталог без очистки старой базы:
+3. Дописать каталог без очистки старой базы (zip нового дампа **можно не переносить**):
 
 ```sh
 ./libshelf import --append \
@@ -134,6 +133,18 @@ curl -s http://127.0.0.1:12380/health
   --library-dir /opt/libshelf/library \
   --data-dir /opt/libshelf/data
 ```
+
+4. Запускать `serve` с **двумя** корнями архивов:
+
+```sh
+./libshelf serve \
+  --library-dir /mnt/share/Книги/fb2.Flibusta.Net \
+  --library-dir /data/flibusta-new \
+  --data-dir /opt/libshelf/data \
+  --auth users
+```
+
+Или в `deploy.sh`: `LIBSHELF_LIB_EXTRA=/data/flibusta-new` (несколько путей через `:`).
 
 Вместо `--base-db` можно указать эталонный старый `.inpx`: `--base /path/to/old.inpx`.  
 При конфликте LIBID побеждает уже существующая запись (старая база / первый `--inpx`).
@@ -225,7 +236,7 @@ sudo chmod +x /opt/libshelf/deploy.sh
 sudo /opt/libshelf/deploy.sh
 ```
 
-Переменные (опционально): `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users`|`none`), `LIBSHELF_DEPLOY_WAIT`.
+Переменные (опционально): `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_LIB_EXTRA` (доп. каталоги архивов через `:`), `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users`|`none`), `LIBSHELF_DEPLOY_WAIT`.
 
 Импорт и базу скрипт **не** трогает — только бинарник и перезапуск `serve`.
 
@@ -236,7 +247,7 @@ libshelf                 (= start)
 libshelf start           [--config FILE] [--addr HOST:PORT] [--no-browser]
 libshelf import          --inpx FILE [--inpx FILE ...] --library-dir DIR --data-dir DIR [--replace|--append]
 libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db PATH) [--library-dir DIR] [--prune-empty-archives] [--dry-run]
-libshelf serve           --library-dir DIR --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
+libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--open]
 libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
 libshelf version
 ```

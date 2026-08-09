@@ -8,6 +8,8 @@ REPO="${LIBSHELF_REPO:-amachulan/libshelf}"
 BIN="${LIBSHELF_BIN:-/opt/libshelf/libshelf}"
 DATA_DIR="${LIBSHELF_DATA:-/opt/libshelf/data}"
 LIB_DIR="${LIBSHELF_LIB:-/mnt/share/Книги/fb2.Flibusta.Net}"
+# Optional extra archive roots (colon-separated), e.g. /data/flibusta-new
+LIB_DIR_EXTRA="${LIBSHELF_LIB_EXTRA:-}"
 ADDR="${LIBSHELF_ADDR:-127.0.0.1:12380}"
 SCREEN_NAME="${LIBSHELF_SCREEN:-libshelf}"
 ASSET="libshelf-linux-amd64"
@@ -148,11 +150,22 @@ mv -f "${BIN}.new" "$BIN"
 echo "Starting $BIN on $ADDR ..."
 AUTH_MODE="${LIBSHELF_AUTH:-users}"
 
-screen -dmaS "$SCREEN_NAME" "$BIN" serve \
-  --addr "$ADDR" \
-  --library-dir "$LIB_DIR" \
-  --data-dir "$DATA_DIR" \
+SERVE_ARGS=(
+  serve
+  --addr "$ADDR"
+  --data-dir "$DATA_DIR"
   --auth "$AUTH_MODE"
+  --library-dir "$LIB_DIR"
+)
+if [[ -n "$LIB_DIR_EXTRA" ]]; then
+  IFS=':' read -r -a _extra_libs <<< "$LIB_DIR_EXTRA"
+  for d in "${_extra_libs[@]}"; do
+    [[ -n "$d" ]] || continue
+    SERVE_ARGS+=(--library-dir "$d")
+  done
+fi
+
+screen -dmaS "$SCREEN_NAME" "$BIN" "${SERVE_ARGS[@]}"
 
 sleep 1
 HEALTH="$(curl -fsS "http://${ADDR}/health" || true)"
