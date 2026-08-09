@@ -148,6 +148,24 @@ function shortAuthors(authors, maxNames = 2) {
   return `${list.slice(0, maxNames).join(", ")} и ещё ${rest}`;
 }
 
+function editionWord(n) {
+  const abs = Math.abs(n) % 100;
+  const d = abs % 10;
+  if (abs > 10 && abs < 20) return "изданий";
+  if (d === 1) return "издание";
+  if (d >= 2 && d <= 4) return "издания";
+  return "изданий";
+}
+
+function worksLabel(n) {
+  const abs = Math.abs(n) % 100;
+  const d = abs % 10;
+  if (abs > 10 && abs < 20) return `${formatNum(n)} произведений`;
+  if (d === 1) return `${formatNum(n)} произведение`;
+  if (d >= 2 && d <= 4) return `${formatNum(n)} произведения`;
+  return `${formatNum(n)} произведений`;
+}
+
 function renderBookGrid(books, target = grid, emptyEl = empty) {
   target.innerHTML = "";
   if (emptyEl) emptyEl.classList.toggle("hidden", books.length > 0);
@@ -167,6 +185,12 @@ function renderBookGrid(books, target = grid, emptyEl = empty) {
     titleEl.title = b.title || "";
     authorsEl.textContent = shortAuthors(b.authors);
     authorsEl.title = b.authors || "";
+    if (b.editionCount > 1) {
+      const badge = document.createElement("span");
+      badge.className = "edition-badge";
+      badge.textContent = `${b.editionCount} ${editionWord(b.editionCount)}`;
+      el.appendChild(badge);
+    }
     const img = el.querySelector("img");
     img.onerror = () => { img.src = placeholderCover(); };
     el.addEventListener("click", () => openBook(b.id));
@@ -214,7 +238,7 @@ function renderResults(query, books, total, page) {
   resultsBack.classList.add("hidden");
   resultsSub.classList.remove("hidden");
   $("results-title").textContent = query ? `Поиск: «${query}»` : "Результаты";
-  resultsSub.textContent = total ? `${formatNum(total)} книг` : "";
+  resultsSub.textContent = total ? worksLabel(total) : "";
   if (!total) resultsSub.classList.add("hidden");
   renderBookGrid(lastBooks);
   syncResultsPager();
@@ -236,7 +260,7 @@ function renderNamedList(kind, data, page) {
   resultsSub.classList.remove("hidden");
   const label = kind === "author" ? "Автор" : kind === "series" ? "Серия" : "Жанр";
   $("results-title").textContent = `${label}: ${data.name}`;
-  resultsSub.textContent = `${formatNum(data.total)} книг`;
+  resultsSub.textContent = worksLabel(data.total || lastBooks.length);
   renderBookGrid(lastBooks);
   syncResultsPager();
   show("results");
@@ -378,6 +402,63 @@ function updateReadButton(progress) {
   }
 }
 
+function formatEditionRow(ed) {
+  let main;
+  if (ed.translators && ed.translators.length) {
+    main = "Перевод: " + ed.translators.join(", ");
+  } else if (ed.publisher || ed.pubYear || ed.year) {
+    main = [ed.publisher, ed.pubYear || (ed.year ? String(ed.year) : "")]
+      .filter(Boolean)
+      .join(", ");
+  } else {
+    main = "Издание";
+  }
+  const subBits = [];
+  if (ed.translators && ed.translators.length) {
+    if (ed.publisher) subBits.push(ed.publisher);
+    if (ed.city) subBits.push(ed.city);
+    if (ed.pubYear) subBits.push(ed.pubYear);
+    else if (ed.year) subBits.push(String(ed.year));
+  } else if (ed.city) {
+    subBits.push(ed.city);
+  }
+  if (ed.size) subBits.push(formatSize(ed.size));
+  if (ed.series) {
+    subBits.push(ed.seriesNum ? `${ed.series} — ${ed.seriesNum}` : ed.series);
+  }
+  return { main, sub: subBits.join(" · ") };
+}
+
+function renderEditions(b) {
+  const box = $("book-editions");
+  const list = $("book-editions-list");
+  list.innerHTML = "";
+  const editions = b.editions || [];
+  if (editions.length <= 1) {
+    box.classList.add("hidden");
+    return;
+  }
+  for (const ed of editions) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "edition-row" + (ed.current || ed.id === b.id ? " is-current" : "");
+    const { main, sub } = formatEditionRow(ed);
+    btn.innerHTML = `<span class="edition-main"></span><span class="edition-sub"></span>`;
+    const isCurrent = !!(ed.current || ed.id === b.id);
+    btn.querySelector(".edition-main").textContent = main + (isCurrent ? " · текущее" : "");
+    btn.querySelector(".edition-sub").textContent = sub;
+    if (isCurrent) {
+      btn.setAttribute("aria-current", "true");
+    } else {
+      btn.addEventListener("click", () => openBook(ed.id));
+    }
+    li.appendChild(btn);
+    list.appendChild(li);
+  }
+  box.classList.remove("hidden");
+}
+
 async function openBook(id) {
   const res = await api("/api/book/" + id);
   if (!res.ok) {
@@ -464,6 +545,7 @@ async function openBook(id) {
   cover.onerror = () => { cover.src = placeholderCover(); };
   $("book-download").href = b.downloadUrl;
   updateReadButton(b.progress || 0);
+  renderEditions(b);
 
   const shelf = $("shelf-controls");
   if (currentUser) {

@@ -1,6 +1,9 @@
 package store
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 const searchIndexVersion = "2" // ё→е + author name order variants
 
@@ -19,6 +22,21 @@ func foldYo(s string) string {
 			return r
 		}
 	}, s)
+}
+
+// normalizeTitle folds ё/е, lowercases, trims trailing ellipsis/dots, collapses spaces.
+func normalizeTitle(s string) string {
+	s = foldYo(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		b.WriteRune(unicode.ToLower(r))
+	}
+	s = strings.TrimRight(b.String(), " .…·•")
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // authorSearchText builds FTS text for one author: "Last First Middle" and

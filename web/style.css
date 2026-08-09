@@ -347,6 +347,7 @@ html.boot-reader body {
 }
 
 .card {
+  position: relative;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -421,6 +422,68 @@ html.boot-reader body {
 .results-sub {
   margin: -0.4rem 0 1rem;
   color: var(--muted);
+}
+.edition-badge {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 1;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  backdrop-filter: blur(4px);
+}
+.book-editions {
+  margin: 1rem 0 0.25rem;
+  max-width: 42rem;
+}
+.book-editions.hidden { display: none; }
+.editions-heading {
+  margin: 0 0 0.55rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.editions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.edition-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: var(--control-radius);
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+  cursor: pointer;
+}
+.edition-row:hover {
+  border-color: var(--accent);
+}
+.edition-row.is-current {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  cursor: default;
+}
+.edition-row .edition-main {
+  display: block;
+  font-weight: 500;
+}
+.edition-row .edition-sub {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 .results-pager {
   display: flex;

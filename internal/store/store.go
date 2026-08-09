@@ -60,36 +60,38 @@ func (s *Store) TotalBookCount() (int, error) {
 }
 
 type Book struct {
-	ID          int64   `json:"id"`
-	Title       string  `json:"title"`
-	Authors     string  `json:"authors"`
-	Series      string  `json:"series"`
-	SeriesNum   int     `json:"seriesNum"`
-	Year        int     `json:"year"`
-	Ext         string  `json:"ext"`
-	Size        int64   `json:"size"`
-	Lang        string  `json:"lang"`
-	Rate        float64 `json:"rate"`
-	CoverURL    string  `json:"coverUrl"`
-	DownloadURL string  `json:"downloadUrl"`
+	ID           int64   `json:"id"`
+	Title        string  `json:"title"`
+	Authors      string  `json:"authors"`
+	Series       string  `json:"series"`
+	SeriesNum    int     `json:"seriesNum"`
+	Year         int     `json:"year"`
+	Ext          string  `json:"ext"`
+	Size         int64   `json:"size"`
+	Lang         string  `json:"lang"`
+	Rate         float64 `json:"rate"`
+	CoverURL     string  `json:"coverUrl"`
+	DownloadURL  string  `json:"downloadUrl"`
+	EditionCount int     `json:"editionCount,omitempty"`
 }
 
 type BookDetails struct {
 	Book
-	SeriesID    int64       `json:"seriesId,omitempty"`
-	AuthorList  []AuthorRef `json:"authorList"`
-	GenreList   []GenreRef  `json:"genreList"`
-	Genres      []string    `json:"genres"` // legacy: genre codes
-	Annotation  string      `json:"annotation,omitempty"`
-	Translators []string    `json:"translators,omitempty"`
-	Publisher   string      `json:"publisher,omitempty"`
-	City        string      `json:"city,omitempty"`
-	PubYear     string      `json:"pubYear,omitempty"`
-	ISBN        string      `json:"isbn,omitempty"`
-	ShelfStatus string      `json:"shelfStatus,omitempty"`
-	Progress    float64     `json:"progress,omitempty"`
-	File        string      `json:"file"`
-	Folder      string      `json:"folder"`
+	SeriesID    int64        `json:"seriesId,omitempty"`
+	AuthorList  []AuthorRef  `json:"authorList"`
+	GenreList   []GenreRef   `json:"genreList"`
+	Genres      []string     `json:"genres"` // legacy: genre codes
+	Annotation  string       `json:"annotation,omitempty"`
+	Translators []string     `json:"translators,omitempty"`
+	Publisher   string       `json:"publisher,omitempty"`
+	City        string       `json:"city,omitempty"`
+	PubYear     string       `json:"pubYear,omitempty"`
+	ISBN        string       `json:"isbn,omitempty"`
+	ShelfStatus string       `json:"shelfStatus,omitempty"`
+	Progress    float64      `json:"progress,omitempty"`
+	File        string       `json:"file"`
+	Folder      string       `json:"folder"`
+	Editions    []EditionRef `json:"editions,omitempty"`
 }
 
 type BookFile struct {

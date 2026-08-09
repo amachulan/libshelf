@@ -344,13 +344,6 @@ func (s *Store) GenreBooks(code string, limit, offset int) (*NamedList, error) {
 	if err != nil {
 		return nil, err
 	}
-	var total int
-	if err := s.db.QueryRow(`
-SELECT count(*) FROM book_genres bg
-JOIN books b ON b.id = bg.book_id
-WHERE bg.genre_id = ? AND b.deleted = 0 AND b.lang = 'ru'`, genreID).Scan(&total); err != nil {
-		return nil, err
-	}
 	rows, err := s.db.Query(`
 SELECT`+bookColumns+`
 FROM books b
@@ -358,7 +351,7 @@ LEFT JOIN series s ON s.id = b.series_id
 JOIN book_genres bg ON bg.book_id = b.id AND bg.genre_id = ?
 WHERE b.deleted = 0 AND b.lang = 'ru'
 ORDER BY b.title
-LIMIT ? OFFSET ?`, genreID, limit, offset)
+LIMIT ?`, genreID, listGroupCap)
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +360,11 @@ LIMIT ? OFFSET ?`, genreID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
-	return &NamedList{ID: genreID, Name: code, Books: books, Total: total}, nil
+	page, total, err := s.groupAndPaginate(books, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &NamedList{ID: genreID, Name: code, Books: page, Total: total}, nil
 }
 
 func scanCatalogPeople(rows *sql.Rows) ([]CatalogPerson, error) {

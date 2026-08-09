@@ -325,6 +325,26 @@ func (s *Server) handleBookDetails(w http.ResponseWriter, r *http.Request, id in
 		d.PubYear = meta.Year
 		d.ISBN = meta.ISBN
 	}
+	if editions, err := s.store.EditionsForBook(id); err == nil && len(editions) > 1 {
+		for i := range editions {
+			if editions[i].ID == id {
+				editions[i].Translators = d.Translators
+				editions[i].Publisher = d.Publisher
+				editions[i].City = d.City
+				editions[i].PubYear = d.PubYear
+				continue
+			}
+			// Cache only — do not open dozens of FB2 archives on every book view.
+			if meta, err := s.bookMetaCached(editions[i].ID); err == nil && meta != nil {
+				editions[i].Translators = meta.Translators
+				editions[i].Publisher = meta.Publisher
+				editions[i].City = meta.City
+				editions[i].PubYear = meta.Year
+			}
+		}
+		d.Editions = editions
+		d.EditionCount = len(editions)
+	}
 	if u := userFrom(r.Context()); u != nil && s.auth != nil {
 		if entry, err := s.auth.GetShelfEntry(u.ID, id); err == nil {
 			d.ShelfStatus = entry.Status
@@ -545,13 +565,22 @@ func (s *Server) extractCover(id int64) (*fb2.Cover, error) {
 	return fb2.ExtractCover(bytes.NewReader(data))
 }
 
-func (s *Server) bookMeta(id int64) (*fb2.Meta, error) {
+func (s *Server) bookMetaCached(id int64) (*fb2.Meta, error) {
 	cachePath := filepath.Join(s.coverDir, strconv.FormatInt(id, 10)+".meta.json")
-	if data, err := os.ReadFile(cachePath); err == nil {
-		var meta fb2.Meta
-		if json.Unmarshal(data, &meta) == nil {
-			return &meta, nil
-		}
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		return nil, err
+	}
+	var meta fb2.Meta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
+}
+
+func (s *Server) bookMeta(id int64) (*fb2.Meta, error) {
+	if meta, err := s.bookMetaCached(id); err == nil {
+		return meta, nil
 	}
 	bf, err := s.store.BookFile(id)
 	if err != nil {
@@ -567,7 +596,7 @@ func (s *Server) bookMeta(id int64) (*fb2.Meta, error) {
 	}
 	if data, err := json.Marshal(meta); err == nil {
 		s.coverMu.Lock()
-		_ = os.WriteFile(cachePath, data, 0o644)
+		_ = os.WriteFile(filepath.Join(s.coverDir, strconv.FormatInt(id, 10)+".meta.json"), data, 0o644)
 		s.coverMu.Unlock()
 	}
 	return meta, nil

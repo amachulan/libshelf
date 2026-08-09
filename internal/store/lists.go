@@ -44,14 +44,6 @@ FROM authors WHERE id = ?`, authorID).Scan(&name)
 		return nil, err
 	}
 
-	var total int
-	if err := s.db.QueryRow(`
-SELECT count(*) FROM book_authors ba
-JOIN books b ON b.id = ba.book_id
-WHERE ba.author_id = ? AND b.deleted = 0 AND b.lang = 'ru'`, authorID).Scan(&total); err != nil {
-		return nil, err
-	}
-
 	rows, err := s.db.Query(`
 SELECT`+bookColumns+`
 FROM books b
@@ -59,7 +51,7 @@ LEFT JOIN series s ON s.id = b.series_id
 WHERE b.deleted = 0 AND b.lang = 'ru'
   AND b.id IN (SELECT book_id FROM book_authors WHERE author_id = ?)
 ORDER BY coalesce(s.title, ''), b.series_num, b.title
-LIMIT ? OFFSET ?`, authorID, limit, offset)
+LIMIT ?`, authorID, listGroupCap)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +61,11 @@ LIMIT ? OFFSET ?`, authorID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
-	return &NamedList{ID: authorID, Name: strings.TrimSpace(name), Books: books, Total: total}, nil
+	page, total, err := s.groupAndPaginate(books, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &NamedList{ID: authorID, Name: strings.TrimSpace(name), Books: page, Total: total}, nil
 }
 
 func (s *Store) SeriesBooks(seriesID int64, limit, offset int) (*NamedList, error) {
@@ -92,20 +88,13 @@ func (s *Store) SeriesBooks(seriesID int64, limit, offset int) (*NamedList, erro
 		return nil, err
 	}
 
-	var total int
-	if err := s.db.QueryRow(`
-SELECT count(*) FROM books
-WHERE series_id = ? AND deleted = 0 AND lang = 'ru'`, seriesID).Scan(&total); err != nil {
-		return nil, err
-	}
-
 	rows, err := s.db.Query(`
 SELECT`+bookColumns+`
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
 WHERE b.deleted = 0 AND b.lang = 'ru' AND b.series_id = ?
 ORDER BY b.series_num, b.title
-LIMIT ? OFFSET ?`, seriesID, limit, offset)
+LIMIT ?`, seriesID, listGroupCap)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +104,11 @@ LIMIT ? OFFSET ?`, seriesID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
-	return &NamedList{ID: seriesID, Name: title, Books: books, Total: total}, nil
+	page, total, err := s.groupAndPaginate(books, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &NamedList{ID: seriesID, Name: title, Books: page, Total: total}, nil
 }
 
 func scanBooks(rows *sql.Rows) ([]Book, error) {
