@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -144,6 +145,70 @@ func sortLetters(merged map[string]int) []LetterCount {
 	return out
 }
 
+func likePrefix(s string) string {
+	s = strings.ToUpper(foldYo(strings.TrimSpace(s)))
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(s) + "%"
+}
+
+// AuthorsByPrefix returns authors whose name starts with query (last/first/full).
+func (s *Store) AuthorsByPrefix(query string, limit int) ([]CatalogPerson, error) {
+	tokens := strings.Fields(foldYo(strings.TrimSpace(query)))
+	if len(tokens) == 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	lang, langArgs := s.langPred("b.lang")
+	has, hasArgs := s.authorHasVisibleBooksSQL()
+	bookCount := `(
+  SELECT count(*) FROM book_authors ba
+  JOIN books b ON b.id = ba.book_id AND b.deleted = 0` + lang + `
+  WHERE ba.author_id = a.id
+)`
+	nameFold := `upper(replace(replace(%s,'ё','е'),'Ё','Е'))`
+	last := fmt.Sprintf(nameFold, "a.last_name")
+	first := fmt.Sprintf(nameFold, "a.first_name")
+	full := fmt.Sprintf(nameFold, `trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name)`)
+
+	var (
+		where string
+		args  []any
+	)
+	args = append(args, langArgs...)
+	args = append(args, hasArgs...)
+	if len(tokens) >= 2 {
+		p0, p1 := likePrefix(tokens[0]), likePrefix(tokens[1])
+		where = `(` + last + ` LIKE ? ESCAPE '\' AND ` + first + ` LIKE ? ESCAPE '\')`
+		args = append(args, p0, p1)
+	} else {
+		p := likePrefix(tokens[0])
+		where = `(` + last + ` LIKE ? ESCAPE '\' OR ` + first + ` LIKE ? ESCAPE '\' OR ` + full + ` LIKE ? ESCAPE '\')`
+		args = append(args, p, p, p)
+	}
+	args = append(args, limit)
+
+	rows, err := s.db.Query(`
+SELECT a.id,
+       trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name),
+       `+bookCount+`
+FROM authors a
+WHERE `+has+`
+  AND `+where+`
+ORDER BY a.last_name, a.first_name
+LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCatalogPeople(rows)
+}
+
 func (s *Store) AuthorsByLetter(letter string, limit, offset int) ([]CatalogPerson, error) {
 	letter = normalizeLetter(letter)
 	if letter != "#" && !isCyrillicLetter(letter) {
@@ -234,6 +299,52 @@ GROUP BY 1`, langArgs...)
 	out := sortLetters(merged)
 	s.catCache.seriesLetters = out
 	return out, nil
+}
+
+// SeriesByPrefix returns series whose title starts with query.
+func (s *Store) SeriesByPrefix(query string, limit int) ([]CatalogSeries, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	lang, langArgs := s.langPred("b.lang")
+	bookCount := `(
+  SELECT count(*) FROM books b
+  WHERE b.series_id = s.id AND b.deleted = 0` + lang + `
+)`
+	titleFold := `upper(replace(replace(s.title,'ё','е'),'Ё','Е'))`
+	pattern := likePrefix(query)
+	args := append(append([]any{}, langArgs...), langArgs...)
+	args = append(args, pattern, limit)
+	rows, err := s.db.Query(`
+SELECT s.id, s.title, `+bookCount+`
+FROM series s
+WHERE EXISTS (
+  SELECT 1 FROM books b
+  WHERE b.series_id = s.id AND b.deleted = 0`+lang+`
+)
+  AND `+titleFold+` LIKE ? ESCAPE '\'
+ORDER BY s.title
+LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CatalogSeries
+	for rows.Next() {
+		var it CatalogSeries
+		if err := rows.Scan(&it.ID, &it.Title, &it.Books); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) SeriesByLetter(letter string, limit, offset int) ([]CatalogSeries, error) {

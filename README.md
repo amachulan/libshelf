@@ -289,8 +289,8 @@ libshelf version
 | GET | `/api/shelf?status=reading\|read\|want` | список полки |
 | GET | `/api/shelf/continue` | продолжить чтение |
 | PUT | `/api/shelf/{id}` | `{status}` или `{status:null}` |
-| GET | `/api/catalog/authors` | буквы / авторы |
-| GET | `/api/catalog/series` | серии |
+| GET | `/api/catalog/authors` | буквы / авторы (`?q=` — префикс имени) |
+| GET | `/api/catalog/series` | серии (`?q=` — префикс названия) |
 | GET | `/api/catalog/genres` | жанры |
 | GET | `/api/catalog/genres/{code}` | книги жанра |
 | GET | `/opds` | OPDS root |

@@ -43,6 +43,11 @@ let shelfTab = "reading";
 let catalogTab = "authors";
 let catalogLetter = "";
 let catalogLoadSeq = 0;
+let catalogQuery = "";
+let catalogFilterTimer = null;
+/** @type {Array<{code: string, name: string, books: number}> | null} */
+let catalogGenresCache = null;
+const catalogFilter = $("catalog-filter");
 let readerBookId = null;
 let readerSaveTimer = null;
 let restorePosition = 0;
@@ -1136,10 +1141,14 @@ function renderCatalogLetters(letters) {
   for (const l of letters) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "letter-btn" + (l.letter === catalogLetter ? " is-active" : "");
+    btn.className = "letter-btn" + (!catalogQuery && l.letter === catalogLetter ? " is-active" : "");
     btn.textContent = l.letter;
     btn.title = formatNum(l.count);
-    btn.addEventListener("click", () => openCatalog(catalogTab, l.letter));
+    btn.addEventListener("click", () => {
+      catalogQuery = "";
+      catalogFilter.value = "";
+      openCatalog(catalogTab, l.letter);
+    });
     strip.appendChild(btn);
   }
 }
@@ -1195,15 +1204,46 @@ function setCatalogLoading(on) {
   if (on) $("catalog-empty").classList.add("hidden");
 }
 
+function catalogFilterPlaceholder() {
+  if (catalogTab === "series") return "Начать вводить название серии…";
+  if (catalogTab === "genres") return "Фильтр жанров…";
+  return "Начать вводить фамилию или имя…";
+}
+
+function syncCatalogFilterUI() {
+  catalogFilter.placeholder = catalogFilterPlaceholder();
+  catalogFilter.value = catalogQuery;
+  $("catalog-letters").classList.toggle("is-filtered", !!catalogQuery && catalogTab !== "genres");
+}
+
+function renderFilteredGenres(query) {
+  const q = (query || "").trim().toLowerCase();
+  const all = catalogGenresCache || [];
+  const items = !q
+    ? all
+    : all.filter((g) => (g.name || "").toLowerCase().includes(q) || (g.code || "").toLowerCase().includes(q));
+  const emptyEl = $("catalog-empty");
+  emptyEl.classList.toggle("hidden", items.length > 0);
+  emptyEl.textContent = items.length ? "Ничего нет" : "Ничего не нашлось";
+  renderCatalogRows(items, "genres");
+}
+
 async function openCatalog(tab, letter) {
+  const tabChanged = !!(tab && tab !== catalogTab);
   catalogTab = tab || catalogTab || "authors";
-  catalogLetter = letter || "";
+  if (letter) {
+    catalogLetter = letter;
+  } else if (tabChanged) {
+    catalogLetter = "";
+  }
   const seq = ++catalogLoadSeq;
   document.querySelectorAll("#catalog-tabs .shelf-pill").forEach((btn) => {
     btn.classList.toggle("is-active", btn.getAttribute("data-cat") === catalogTab);
   });
+  syncCatalogFilterUI();
 
   const emptyEl = $("catalog-empty");
+  emptyEl.textContent = "Ничего нет";
   emptyEl.classList.add("hidden");
   if (catalogTab === "genres") setCatalogLettersIdle(true);
   setCatalogLoading(true);
@@ -1220,19 +1260,21 @@ async function openCatalog(tab, letter) {
       }
       const data = await res.json();
       if (seq !== catalogLoadSeq) return;
-      $("catalog-list").innerHTML = "";
-      const genresList = data.genres || [];
-      emptyEl.classList.toggle("hidden", genresList.length > 0);
-      renderCatalogRows(genresList.map((g) => ({
+      catalogGenresCache = (data.genres || []).map((g) => ({
         code: g.code,
         name: g.name || g.code,
         books: g.books,
-      })), "genres");
+      }));
+      renderFilteredGenres(catalogQuery);
       return;
     }
 
     let url = "/api/catalog/" + catalogTab + "?limit=150";
-    if (catalogLetter) url += "&letter=" + encodeURIComponent(catalogLetter);
+    if (catalogQuery) {
+      url = "/api/catalog/" + catalogTab + "?q=" + encodeURIComponent(catalogQuery) + "&limit=50";
+    } else if (catalogLetter) {
+      url += "&letter=" + encodeURIComponent(catalogLetter);
+    }
     const res = await api(url);
     if (seq !== catalogLoadSeq) return;
     if (!res.ok) {
@@ -1242,26 +1284,47 @@ async function openCatalog(tab, letter) {
     const data = await res.json();
     if (seq !== catalogLoadSeq) return;
     const letters = data.letters || [];
-    catalogLetter = data.letter || catalogLetter || (letters[0] && letters[0].letter) || "";
+    if (!catalogQuery) {
+      catalogLetter = data.letter || catalogLetter || (letters[0] && letters[0].letter) || "";
+    }
     const qs = new URLSearchParams();
     qs.set("catalog", catalogTab);
-    if (catalogLetter) qs.set("letter", catalogLetter);
-    history.pushState({ catalog: catalogTab, letter: catalogLetter }, "", "/?" + qs.toString());
+    if (catalogQuery) qs.set("cq", catalogQuery);
+    else if (catalogLetter) qs.set("letter", catalogLetter);
+    history.pushState({ catalog: catalogTab, letter: catalogLetter, cq: catalogQuery }, "", "/?" + qs.toString());
 
     renderCatalogLetters(letters);
+    syncCatalogFilterUI();
     $("catalog-list").innerHTML = "";
-    if (catalogTab === "authors") {
-      renderCatalogRows(data.authors || [], "authors");
-    } else {
-      renderCatalogRows((data.series || []).map((s) => ({
-        id: s.id,
-        name: s.title,
-        books: s.books,
-      })), "series");
-    }
+    const rows =
+      catalogTab === "authors"
+        ? data.authors || []
+        : (data.series || []).map((s) => ({
+            id: s.id,
+            name: s.title,
+            books: s.books,
+          }));
+    emptyEl.classList.toggle("hidden", rows.length > 0);
+    emptyEl.textContent = rows.length ? "Ничего нет" : "Ничего не нашлось";
+    renderCatalogRows(rows, catalogTab);
   } finally {
     if (seq === catalogLoadSeq) setCatalogLoading(false);
   }
+}
+
+function scheduleCatalogFilter() {
+  clearTimeout(catalogFilterTimer);
+  catalogFilterTimer = setTimeout(() => {
+    catalogQuery = (catalogFilter.value || "").trim();
+    if (catalogTab === "genres") {
+      syncCatalogFilterUI();
+      if (catalogGenresCache) {
+        renderFilteredGenres(catalogQuery);
+        return;
+      }
+    }
+    openCatalog(catalogTab);
+  }, 200);
 }
 
 async function openLists(status) {
@@ -1499,6 +1562,7 @@ async function bootFromURL() {
   const genre = params.get("genre");
   const catalog = params.get("catalog");
   const letter = params.get("letter") || "";
+  const cq = (params.get("cq") || "").trim();
   const lists = params.get("lists");
   const search = searchFromURLParams(params);
   const page = Math.max(1, parseInt(params.get("p") || "1", 10) || 1);
@@ -1514,6 +1578,8 @@ async function bootFromURL() {
     return;
   }
   if (catalog) {
+    catalogQuery = cq;
+    catalogFilter.value = cq;
     await openCatalog(catalog, letter);
     return;
   }
@@ -1609,8 +1675,15 @@ $("nav-home").addEventListener("click", (e) => {
 $("nav-catalog").addEventListener("click", () => openCatalog(catalogTab, catalogLetter));
 
 document.querySelectorAll("#catalog-tabs .shelf-pill").forEach((btn) => {
-  btn.addEventListener("click", () => openCatalog(btn.getAttribute("data-cat"), ""));
+  btn.addEventListener("click", () => {
+    catalogQuery = "";
+    catalogFilter.value = "";
+    openCatalog(btn.getAttribute("data-cat"), "");
+  });
 });
+
+catalogFilter.addEventListener("input", scheduleCatalogFilter);
+catalogFilter.addEventListener("search", scheduleCatalogFilter);
 
 $("nav-lists").addEventListener("click", () => openLists(shelfTab));
 

@@ -25,12 +25,22 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	letter := r.URL.Query().Get("letter")
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
 
 	switch parts[0] {
 	case "authors":
 		letters, err := s.store.AuthorLetters()
 		if err != nil {
 			httpError(w, err, 500)
+			return
+		}
+		if q != "" {
+			items, err := s.store.AuthorsByPrefix(q, limit)
+			if err != nil {
+				httpError(w, err, 500)
+				return
+			}
+			writeJSON(w, map[string]any{"letters": letters, "q": q, "authors": items})
 			return
 		}
 		if letter == "" && len(letters) > 0 {
@@ -50,6 +60,15 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		letters, err := s.store.SeriesLetters()
 		if err != nil {
 			httpError(w, err, 500)
+			return
+		}
+		if q != "" {
+			items, err := s.store.SeriesByPrefix(q, limit)
+			if err != nil {
+				httpError(w, err, 500)
+				return
+			}
+			writeJSON(w, map[string]any{"letters": letters, "q": q, "series": items})
 			return
 		}
 		if letter == "" && len(letters) > 0 {

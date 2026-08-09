@@ -678,6 +678,29 @@ html.boot-reader body {
   margin-top: 2rem;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.catalog-filter {
+  display: block;
+  margin: 0.85rem 0 0;
+}
+
+.catalog-filter input {
+  width: 100%;
+  max-width: 28rem;
+  box-sizing: border-box;
+}
+
 .letter-strip {
   display: flex;
   flex-wrap: wrap;
@@ -685,6 +708,12 @@ html.boot-reader body {
   margin: 0.75rem 0 1rem;
   /* Keep one row reserved so genres ↔ authors does not jump the page. */
   min-height: 2rem;
+}
+
+.letter-strip.is-filtered .letter-btn.is-active {
+  background: var(--card);
+  border-color: var(--line);
+  color: var(--muted);
 }
 
 .letter-strip.is-idle {
