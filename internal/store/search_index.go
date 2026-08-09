@@ -31,29 +31,31 @@ func (s *Store) EnsureSearchIndex() error {
 	return nil
 }
 
+type searchBookRow struct {
+	id           int64
+	title, series string
+}
+
 // RebuildSearchIndex refreshes book_search for russian non-deleted books.
+// Books are loaded first, then written — SQLite is limited to one connection,
+// so overlapping Query+Begin deadlocks.
 func (s *Store) RebuildSearchIndex() error {
-	// Invalidate first so a crash mid-rebuild forces another pass on Open.
-	_ = s.setSearchIndexMeta("")
-	if _, err := s.db.Exec(`DELETE FROM book_search`); err != nil {
+	books, err := s.loadSearchBooks()
+	if err != nil {
 		return err
 	}
-
-	rows, err := s.db.Query(`
-SELECT b.id, b.title, coalesce(s.title, '')
-FROM books b
-LEFT JOIN series s ON s.id = b.series_id
-WHERE b.deleted = 0 AND b.lang = 'ru'`)
-	if err != nil {
-		return fmt.Errorf("search scan: %w", err)
-	}
-	defer rows.Close()
 
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+
+	del, err := tx.Prepare(`DELETE FROM book_search WHERE rowid = ?`)
+	if err != nil {
+		return err
+	}
+	defer del.Close()
 
 	ins, err := tx.Prepare(`INSERT INTO book_search(rowid, title, authors, series) VALUES(?,?,?,?)`)
 	if err != nil {
@@ -71,28 +73,31 @@ ORDER BY a.last_name, a.first_name`)
 	}
 	defer authStmt.Close()
 
-	n := 0
-	for rows.Next() {
-		var id int64
-		var title, series string
-		if err := rows.Scan(&id, &title, &series); err != nil {
-			return err
-		}
-		authors, err := authorSearchBlob(authStmt, id)
+	for i, b := range books {
+		authors, err := authorSearchBlob(authStmt, b.id)
 		if err != nil {
 			return err
 		}
-		if _, err := ins.Exec(id, foldYo(title), authors, foldYo(series)); err != nil {
+		if _, err := del.Exec(b.id); err != nil {
 			return err
 		}
-		n++
-		if n%50_000 == 0 {
-			log.Printf("search index books=%d", n)
+		if _, err := ins.Exec(b.id, foldYo(b.title), authors, foldYo(b.series)); err != nil {
+			return err
+		}
+		if (i+1)%50_000 == 0 {
+			log.Printf("search index books=%d/%d", i+1, len(books))
 		}
 	}
-	if err := rows.Err(); err != nil {
+
+	// Drop FTS rows for books that are no longer searchable.
+	if _, err := tx.Exec(`
+DELETE FROM book_search
+WHERE rowid NOT IN (
+  SELECT id FROM books WHERE deleted = 0 AND lang = 'ru'
+)`); err != nil {
 		return err
 	}
+
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -100,6 +105,31 @@ ORDER BY a.last_name, a.first_name`)
 		return err
 	}
 	return s.setSearchIndexMeta(searchIndexVersion)
+}
+
+func (s *Store) loadSearchBooks() ([]searchBookRow, error) {
+	rows, err := s.db.Query(`
+SELECT b.id, b.title, coalesce(s.title, '')
+FROM books b
+LEFT JOIN series s ON s.id = b.series_id
+WHERE b.deleted = 0 AND b.lang = 'ru'`)
+	if err != nil {
+		return nil, fmt.Errorf("search scan: %w", err)
+	}
+	defer rows.Close()
+
+	books := make([]searchBookRow, 0, 1024)
+	for rows.Next() {
+		var b searchBookRow
+		if err := rows.Scan(&b.id, &b.title, &b.series); err != nil {
+			return nil, err
+		}
+		books = append(books, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return books, nil
 }
 
 func authorSearchBlob(stmt *sql.Stmt, bookID int64) (string, error) {

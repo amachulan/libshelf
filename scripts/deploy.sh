@@ -167,12 +167,19 @@ fi
 
 screen -dmaS "$SCREEN_NAME" "$BIN" "${SERVE_ARGS[@]}"
 
-sleep 1
-HEALTH="$(curl -fsS "http://${ADDR}/health" || true)"
-if [[ "$HEALTH" == ok*"$TARGET_SHA"* ]]; then
-  echo "OK: http://${ADDR}/health -> ${HEALTH//$'\n'/}"
-else
-  echo "WARN: health check unexpected: ${HEALTH:-<failed>}" >&2
-  echo "Check: screen -r $SCREEN_NAME" >&2
-  exit 1
-fi
+HEALTH=""
+for i in $(seq 1 30); do
+  sleep 1
+  HEALTH="$(curl -fsS "http://${ADDR}/health" || true)"
+  if [[ "$HEALTH" == ok*"$TARGET_SHA"* ]]; then
+    echo "OK: http://${ADDR}/health -> ${HEALTH//$'\n'/}"
+    exit 0
+  fi
+done
+
+echo "WARN: health check unexpected: ${HEALTH:-<failed>}" >&2
+echo "screen sessions:" >&2
+screen -ls >&2 || true
+echo "Try foreground:" >&2
+echo "  $BIN ${SERVE_ARGS[*]}" >&2
+exit 1

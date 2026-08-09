@@ -123,6 +123,7 @@ func runStart(args []string) {
 		log.Fatal(err)
 	}
 	defer st.Close()
+	st.EnsureSearchIndexAsync()
 
 	n, err := st.TotalBookCount()
 	if err != nil {
@@ -348,6 +349,7 @@ func runServe(args []string) {
 		log.Fatal(err)
 	}
 	defer st.Close()
+	st.EnsureSearchIndexAsync()
 	n, err := st.BookCount()
 	if err != nil {
 		log.Fatal(err)

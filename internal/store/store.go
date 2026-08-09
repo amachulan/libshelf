@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -31,11 +32,17 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("index: %w", err)
 		}
 	}
-	if err := s.EnsureSearchIndex(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("search index: %w", err)
-	}
 	return s, nil
+}
+
+// EnsureSearchIndexAsync rebuilds the FTS index in the background so serve can
+// bind the HTTP port immediately (health checks must not wait on reindex).
+func (s *Store) EnsureSearchIndexAsync() {
+	go func() {
+		if err := s.EnsureSearchIndex(); err != nil {
+			log.Printf("search index: %v", err)
+		}
+	}()
 }
 
 func (s *Store) Close() error { return s.db.Close() }
