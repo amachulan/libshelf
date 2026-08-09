@@ -133,7 +133,6 @@ func (s *Store) clearCatalog() error {
 	}
 	defer tx.Rollback()
 	for _, q := range []string{
-		`DELETE FROM book_search`,
 		`DELETE FROM meta WHERE key = 'search_index_version'`,
 		`DELETE FROM book_genres`,
 		`DELETE FROM book_authors`,
@@ -147,7 +146,11 @@ func (s *Store) clearCatalog() error {
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// Contentless FTS5 rejects DELETE — drop/recreate outside the catalog tx.
+	return s.resetSearchTable()
 }
 
 type importSession struct {

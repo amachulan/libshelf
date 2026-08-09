@@ -61,14 +61,18 @@ CREATE TABLE IF NOT EXISTS book_genres (
   PRIMARY KEY (book_id, genre_id)
 );
 
-CREATE VIRTUAL TABLE IF NOT EXISTS book_search USING fts5(
+` + bookSearchDDL + `;
+`
+
+// bookSearchDDL creates the contentless FTS5 index. Contentless tables reject
+// DELETE/UPDATE — wipe via DROP + recreate (see RebuildSearchIndex).
+const bookSearchDDL = `CREATE VIRTUAL TABLE IF NOT EXISTS book_search USING fts5(
   title,
   authors,
   series,
   content='',
   tokenize='unicode61'
-);
-`
+)`
 
 var schemaIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_books_lang_deleted ON books(lang, deleted)`,

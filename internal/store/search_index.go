@@ -32,16 +32,21 @@ func (s *Store) EnsureSearchIndex() error {
 }
 
 type searchBookRow struct {
-	id           int64
+	id            int64
 	title, series string
 }
 
 // RebuildSearchIndex refreshes book_search for russian non-deleted books.
 // Books are loaded first, then written — SQLite is limited to one connection,
-// so overlapping Query+Begin deadlocks.
+// so overlapping Query+Begin deadlocks. Contentless FTS5 cannot DELETE rows,
+// so the table is dropped and recreated.
 func (s *Store) RebuildSearchIndex() error {
 	books, err := s.loadSearchBooks()
 	if err != nil {
+		return err
+	}
+
+	if err := s.resetSearchTable(); err != nil {
 		return err
 	}
 
@@ -50,12 +55,6 @@ func (s *Store) RebuildSearchIndex() error {
 		return err
 	}
 	defer tx.Rollback()
-
-	del, err := tx.Prepare(`DELETE FROM book_search WHERE rowid = ?`)
-	if err != nil {
-		return err
-	}
-	defer del.Close()
 
 	ins, err := tx.Prepare(`INSERT INTO book_search(rowid, title, authors, series) VALUES(?,?,?,?)`)
 	if err != nil {
@@ -78,24 +77,12 @@ ORDER BY a.last_name, a.first_name`)
 		if err != nil {
 			return err
 		}
-		if _, err := del.Exec(b.id); err != nil {
-			return err
-		}
 		if _, err := ins.Exec(b.id, foldYo(b.title), authors, foldYo(b.series)); err != nil {
 			return err
 		}
 		if (i+1)%50_000 == 0 {
 			log.Printf("search index books=%d/%d", i+1, len(books))
 		}
-	}
-
-	// Drop FTS rows for books that are no longer searchable.
-	if _, err := tx.Exec(`
-DELETE FROM book_search
-WHERE rowid NOT IN (
-  SELECT id FROM books WHERE deleted = 0 AND lang = 'ru'
-)`); err != nil {
-		return err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -105,6 +92,16 @@ WHERE rowid NOT IN (
 		return err
 	}
 	return s.setSearchIndexMeta(searchIndexVersion)
+}
+
+func (s *Store) resetSearchTable() error {
+	if _, err := s.db.Exec(`DROP TABLE IF EXISTS book_search`); err != nil {
+		return fmt.Errorf("drop book_search: %w", err)
+	}
+	if _, err := s.db.Exec(bookSearchDDL); err != nil {
+		return fmt.Errorf("create book_search: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) loadSearchBooks() ([]searchBookRow, error) {
