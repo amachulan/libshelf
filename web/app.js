@@ -91,6 +91,38 @@ async function loadSession() {
   return true;
 }
 
+function formatLastSeen(iso) {
+  if (!iso) return "никогда";
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "никогда";
+  const diff = Date.now() - t;
+  if (diff < 60_000) return "только что";
+  if (diff < 60 * 60_000) {
+    const m = Math.floor(diff / 60_000);
+    return m + " мин назад";
+  }
+  if (diff < 24 * 60 * 60_000) {
+    const h = Math.floor(diff / (60 * 60_000));
+    return h + " ч назад";
+  }
+  if (diff < 7 * 24 * 60 * 60_000) {
+    const d = Math.floor(diff / (24 * 60 * 60_000));
+    if (d === 1) return "вчера";
+    return d + " дн назад";
+  }
+  try {
+    return new Date(t).toLocaleString("ru-RU", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 function roleLabel(role) {
   return role === "admin" ? "Администратор" : "Читатель";
 }
@@ -1628,9 +1660,17 @@ async function loadUsers() {
   const users = data.users || [];
   for (const u of users) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td></td><td></td><td class="actions"></td>`;
+    tr.innerHTML = `<td></td><td></td><td class="users-seen"></td><td class="actions"></td>`;
     tr.children[0].textContent = u.username;
     tr.children[1].textContent = roleLabel(u.role);
+    tr.children[2].textContent = formatLastSeen(u.lastSeenAt);
+    if (u.lastSeenAt) {
+      try {
+        tr.children[2].title = new Date(u.lastSeenAt).toLocaleString("ru-RU");
+      } catch {
+        tr.children[2].title = u.lastSeenAt;
+      }
+    }
     if (!currentUser || u.id !== currentUser.id) {
       const del = document.createElement("button");
       del.type = "button";
@@ -1645,7 +1685,7 @@ async function loadUsers() {
         }
         loadUsers();
       });
-      tr.children[2].appendChild(del);
+      tr.children[3].appendChild(del);
     }
     body.appendChild(tr);
   }

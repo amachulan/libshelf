@@ -19,6 +19,8 @@ const (
 	RoleReader = "reader"
 
 	sessionTTL = 30 * 24 * time.Hour
+	// How often last_seen_at may be rewritten on an active session.
+	lastSeenMinInterval = 5 * time.Minute
 	// Renamed from libshelf_session so browsers drop stuck Secure/non-Secure duplicates.
 	cookieName = "libshelf_sid"
 	bcryptCost = 10
@@ -35,9 +37,10 @@ var (
 )
 
 type User struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	ID         int64  `json:"id"`
+	Username   string `json:"username"`
+	Role       string `json:"role"`
+	LastSeenAt string `json:"lastSeenAt,omitempty"`
 }
 
 type Auth struct {
@@ -60,7 +63,8 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
   pass_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('admin','reader')),
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
@@ -73,11 +77,51 @@ CREATE INDEX IF NOT EXISTS idx_sessions_exp ON sessions(expires_at);
 		db.Close()
 		return nil, err
 	}
+	if err := a.ensureUserColumns(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := a.ensureShelfSchema(); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return a, nil
+}
+
+func (a *Auth) ensureUserColumns() error {
+	var n int
+	err := a.db.QueryRow(`SELECT count(*) FROM pragma_table_info('users') WHERE name = 'last_seen_at'`).Scan(&n)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err = a.db.Exec(`ALTER TABLE users ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+func (a *Auth) touchLastSeen(userID int64) {
+	_, _ = a.db.Exec(
+		`UPDATE users SET last_seen_at = ? WHERE id = ?`,
+		time.Now().UTC().Format(time.RFC3339), userID,
+	)
+}
+
+func (a *Auth) touchLastSeenThrottled(userID int64) {
+	var raw string
+	err := a.db.QueryRow(`SELECT last_seen_at FROM users WHERE id = ?`, userID).Scan(&raw)
+	if err != nil {
+		return
+	}
+	if raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			if time.Since(t) < lastSeenMinInterval {
+				return
+			}
+		}
+	}
+	a.touchLastSeen(userID)
 }
 
 func (a *Auth) Close() error { return a.db.Close() }
@@ -147,7 +191,7 @@ func (a *Auth) CreateUser(username, password, role string) (*User, error) {
 }
 
 func (a *Auth) ListUsers() ([]User, error) {
-	rows, err := a.db.Query(`SELECT id, username, role FROM users ORDER BY username`)
+	rows, err := a.db.Query(`SELECT id, username, role, last_seen_at FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
@@ -155,9 +199,11 @@ func (a *Auth) ListUsers() ([]User, error) {
 	var out []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role); err != nil {
+		var seen string
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &seen); err != nil {
 			return nil, err
 		}
+		u.LastSeenAt = seen
 		out = append(out, u)
 	}
 	return out, rows.Err()
@@ -254,6 +300,7 @@ func (a *Auth) Authenticate(username, password string) (*User, error) {
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
 		return nil, ErrInvalidCreds
 	}
+	a.touchLastSeenThrottled(u.ID)
 	return &u, nil
 }
 
@@ -270,6 +317,8 @@ func (a *Auth) Login(username, password string) (token string, user *User, err e
 	if _, err := a.db.Exec(`INSERT INTO sessions(token, user_id, expires_at) VALUES(?,?,?)`, token, u.ID, exp); err != nil {
 		return "", nil, err
 	}
+	// Login should always refresh last seen (Authenticate may have been throttled).
+	a.touchLastSeen(u.ID)
 	return token, u, nil
 }
 
@@ -297,6 +346,7 @@ WHERE s.token = ? AND s.expires_at >= ?`, token, now).Scan(&u.ID, &u.Username, &
 	if err != nil {
 		return nil, err
 	}
+	a.touchLastSeenThrottled(u.ID)
 	return &u, nil
 }
 
