@@ -770,15 +770,35 @@ function pageModeActive() {
   return document.body.classList.contains("reading-mode") && readMode === "pages";
 }
 
+/** Visible height of the page viewport (layout can be taller than the screen with browser chrome). */
 function pageViewportHeight() {
   const vp = readerViewportEl();
-  const h = vp ? vp.clientHeight : 0;
-  if (h >= 80) return h;
+  let h = vp ? vp.clientHeight : 0;
+
+  // Mobile URL/toolbars: fixed 100%/100vh often taller than what is actually painted.
+  const vv = window.visualViewport;
+  if (vv && vp) {
+    const rect = vp.getBoundingClientRect();
+    const visTop = Math.max(rect.top, vv.offsetTop);
+    const visBottom = Math.min(rect.bottom, vv.offsetTop + vv.height);
+    const visible = visBottom - visTop;
+    if (visible >= 80) {
+      h = h > 0 ? Math.min(h, visible) : visible;
+    }
+  } else if (vv && vv.height >= 80) {
+    h = h > 0 ? Math.min(h, vv.height) : vv.height;
+  }
+
+  if (h >= 80) {
+    // Keep a small pad so the last line never sits under the fold / home indicator.
+    return Math.max(80, h - 2);
+  }
   const bar = document.querySelector(".reader-bar");
   const barH = bar && !document.body.classList.contains("reader-chrome-hidden")
     ? bar.offsetHeight
     : 0;
-  return Math.max(80, window.innerHeight - barH);
+  const fallback = (vv && vv.height >= 80 ? vv.height : window.innerHeight) - barH;
+  return Math.max(80, fallback - 2);
 }
 
 /** Bottoms of line/box fragments, relative to the content element top. */
@@ -846,7 +866,9 @@ function rebuildReaderPages() {
   const eps = 1;
 
   while (pageTop + H < total - eps) {
-    const limit = pageTop + H - eps;
+    // Prefer a line break slightly above the fold so a line cannot be painted half-cut
+    // when visualViewport is a few px shorter than the layout box.
+    const limit = pageTop + H - 4;
     let best = -1;
     for (let i = 0; i < bottoms.length; i++) {
       const b = bottoms[i];
@@ -1579,11 +1601,25 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-window.addEventListener("resize", () => {
+let readerViewportTimer = null;
+let lastPageViewportH = 0;
+
+function onReaderViewportChange() {
   if (!document.body.classList.contains("reading-mode") || readMode !== "pages" || !readerBookId) return;
-  const pos = readerPosition();
-  requestAnimationFrame(() => restoreReaderPosition(pos));
-});
+  clearTimeout(readerViewportTimer);
+  readerViewportTimer = setTimeout(() => {
+    const h = pageViewportHeight();
+    if (lastPageViewportH > 0 && Math.abs(h - lastPageViewportH) < 3) return;
+    lastPageViewportH = h;
+    preserveReaderPageAfterResize();
+  }, 80);
+}
+
+window.addEventListener("resize", onReaderViewportChange);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", onReaderViewportChange);
+  window.visualViewport.addEventListener("scroll", onReaderViewportChange);
+}
 
 async function bootFromURL() {
   const params = new URLSearchParams(location.search);
