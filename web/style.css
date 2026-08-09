@@ -369,6 +369,9 @@ body {
   border-radius: 0;
   background: transparent;
   color: var(--muted);
+  font: inherit;
+  font-size: 1.15rem;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -376,20 +379,6 @@ body {
 .search-adv-toggle[aria-expanded="true"] {
   color: var(--ink);
   background: color-mix(in srgb, var(--line) 40%, transparent);
-}
-
-.search-adv-ico {
-  display: block;
-  width: 0.42rem;
-  height: 0.42rem;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-0.12rem) rotate(45deg);
-  transition: transform 0.15s ease;
-}
-
-.search-adv-toggle[aria-expanded="true"] .search-adv-ico {
-  transform: translateY(0.1rem) rotate(225deg);
 }
 
 .adv-search {
