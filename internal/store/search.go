@@ -191,3 +191,62 @@ LIMIT ?`)
 	}
 	return s.groupAndPaginate(candidates, limit, offset)
 }
+
+// SearchAuthors returns authors whose name parts match all query tokens (any order).
+func (s *Store) SearchAuthors(query string, limit int) ([]CatalogPerson, error) {
+	tokens := strings.Fields(foldYo(strings.TrimSpace(query)))
+	if len(tokens) == 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 20 {
+		limit = 20
+	}
+
+	lang, langArgs := s.langPred("b.lang")
+	has, hasArgs := s.authorHasVisibleBooksSQL()
+
+	var (
+		where []string
+		args  []any
+	)
+	args = append(args, hasArgs...)
+	for _, tok := range tokens {
+		pats := likePrefixPatterns(tok)
+		wLast, aLast := likeOrColumn("a.last_name", pats)
+		wFirst, aFirst := likeOrColumn("a.first_name", pats)
+		wMid, aMid := likeOrColumn("a.middle_name", pats)
+		where = append(where, `(`+wLast+` OR `+wFirst+` OR `+wMid+`)`)
+		args = append(args, aLast...)
+		args = append(args, aFirst...)
+		args = append(args, aMid...)
+	}
+	args = append(args, limit)
+	args = append(args, langArgs...)
+
+	rows, err := s.db.Query(`
+WITH matched AS (
+  SELECT a.id,
+         trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name) AS name,
+         a.last_name,
+         a.first_name
+  FROM authors a
+  WHERE `+has+`
+    AND `+strings.Join(where, " AND ")+`
+  ORDER BY a.last_name, a.first_name
+  LIMIT ?
+)
+SELECT m.id, m.name,
+  (SELECT count(*) FROM book_authors ba
+   JOIN books b ON b.id = ba.book_id AND b.deleted = 0`+lang+`
+   WHERE ba.author_id = m.id)
+FROM matched m
+ORDER BY 3 DESC, m.last_name, m.first_name`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCatalogPeople(rows)
+}

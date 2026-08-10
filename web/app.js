@@ -393,7 +393,38 @@ function setAdvOpen(open) {
   advToggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
-function renderResults(search, books, total, page) {
+function renderSearchAuthors(authors) {
+  const box = $("search-authors");
+  const list = $("search-authors-list");
+  list.innerHTML = "";
+  const items = authors || [];
+  if (!items.length) {
+    box.classList.add("hidden");
+    return;
+  }
+  for (const a of items) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "author-series-chip";
+    const name = document.createElement("span");
+    name.textContent = a.name || "Автор";
+    btn.appendChild(name);
+    if (a.books) {
+      const count = document.createElement("span");
+      count.className = "author-series-count";
+      count.textContent = formatNum(a.books);
+      btn.appendChild(count);
+    }
+    btn.addEventListener("click", () => {
+      listReturn = { type: "search" };
+      openAuthor(a.id);
+    });
+    list.appendChild(btn);
+  }
+  box.classList.remove("hidden");
+}
+
+function renderResults(search, books, total, page, authors) {
   listContext = null;
   lastSearch = search || emptySearch();
   lastBooks = books || [];
@@ -407,10 +438,15 @@ function renderResults(search, books, total, page) {
   resultsBack.classList.add("hidden");
   resultsSub.classList.remove("hidden");
   $("author-series").classList.add("hidden");
+  if (page <= 1) {
+    renderSearchAuthors(authors);
+  } else {
+    $("search-authors").classList.add("hidden");
+  }
   const label = searchLabel(lastSearch);
   $("results-title").textContent = label ? `Поиск: ${label}` : "Результаты";
   resultsSub.textContent = total ? worksLabel(total) : "";
-  if (!total) resultsSub.classList.add("hidden");
+  if (!total && !(authors && authors.length)) resultsSub.classList.add("hidden");
   renderBookGrid(lastBooks);
   syncResultsPager();
   show("results");
@@ -462,6 +498,7 @@ function renderNamedList(kind, data, page) {
   const label = kind === "author" ? "Автор" : kind === "series" ? "Серия" : "Жанр";
   $("results-title").textContent = `${label}: ${data.name}`;
   resultsSub.textContent = worksLabel(data.total || lastBooks.length);
+  $("search-authors").classList.add("hidden");
   if (kind === "author") {
     renderAuthorSeries(data.series, data.id);
   } else {
@@ -510,7 +547,7 @@ async function doSearch(search, page) {
   if (page > pages && total > 0) {
     return doSearch(s, pages);
   }
-  renderResults(s, data.books || [], total, page);
+  renderResults(s, data.books || [], total, page, page <= 1 ? data.authors || [] : []);
   window.scrollTo(0, 0);
 }
 

@@ -276,19 +276,32 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	decorateBooks(books)
-	writeJSON(w, map[string]any{
-		"query":      q.Q,
-		"author":     q.Author,
-		"title":      q.Title,
-		"yearFrom":   q.YearFrom,
-		"yearTo":     q.YearTo,
-		"addedFrom":  q.AddedFrom,
-		"addedTo":    q.AddedTo,
-		"books":      books,
-		"total":      total,
-		"limit":      limit,
-		"offset":     offset,
-	})
+	out := map[string]any{
+		"query":     q.Q,
+		"author":    q.Author,
+		"title":     q.Title,
+		"yearFrom":  q.YearFrom,
+		"yearTo":    q.YearTo,
+		"addedFrom": q.AddedFrom,
+		"addedTo":   q.AddedTo,
+		"books":     books,
+		"total":     total,
+		"limit":     limit,
+		"offset":    offset,
+	}
+	// Author chips only on the first page of text searches.
+	if offset == 0 {
+		text := q.Author
+		if text == "" {
+			text = q.Q
+		}
+		if text != "" {
+			if authors, err := s.store.SearchAuthors(text, 8); err == nil && len(authors) > 0 {
+				out["authors"] = authors
+			}
+		}
+	}
+	writeJSON(w, out)
 }
 
 func (s *Server) handleBook(w http.ResponseWriter, r *http.Request) {
