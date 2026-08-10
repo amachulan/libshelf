@@ -30,9 +30,9 @@ const PAGE_SIZE = 60;
 /** @type {SearchParams} */
 let lastSearch = emptySearch();
 let lastBooks = [];
-let listContext = null; // { kind: 'author'|'series'|'genre', id, name }
-/** Where ← on a named list should go (book page / catalog / search). */
-/** @type {{ type: 'book', id: number } | { type: 'catalog', tab: string, letter: string } | { type: 'search' } | null} */
+let listContext = null; // { kind: 'author'|'series'|'genre', id, name, series? }
+/** Where ← on a named list should go (book page / catalog / search / author). */
+/** @type {{ type: 'book', id: number } | { type: 'author', id: number } | { type: 'catalog', tab: string, letter: string } | { type: 'search' } | null} */
 let listReturn = null;
 /** @type {{ mode: 'search'|'author'|'series'|'genre', key: string|number|SearchParams, page: number, total: number, limit: number } | null} */
 let resultsPager = null;
@@ -406,6 +406,7 @@ function renderResults(search, books, total, page) {
   };
   resultsBack.classList.add("hidden");
   resultsSub.classList.remove("hidden");
+  $("author-series").classList.add("hidden");
   const label = searchLabel(lastSearch);
   $("results-title").textContent = label ? `Поиск: ${label}` : "Результаты";
   resultsSub.textContent = total ? worksLabel(total) : "";
@@ -415,8 +416,39 @@ function renderResults(search, books, total, page) {
   show("results");
 }
 
+function renderAuthorSeries(series, authorId) {
+  const box = $("author-series");
+  const list = $("author-series-list");
+  list.innerHTML = "";
+  const items = series || [];
+  if (!items.length) {
+    box.classList.add("hidden");
+    return;
+  }
+  for (const s of items) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "author-series-chip";
+    const name = document.createElement("span");
+    name.textContent = s.title || s.name || "Серия";
+    btn.appendChild(name);
+    if (s.books) {
+      const count = document.createElement("span");
+      count.className = "author-series-count";
+      count.textContent = formatNum(s.books);
+      btn.appendChild(count);
+    }
+    btn.addEventListener("click", () => {
+      listReturn = { type: "author", id: authorId };
+      openSeries(s.id);
+    });
+    list.appendChild(btn);
+  }
+  box.classList.remove("hidden");
+}
+
 function renderNamedList(kind, data, page) {
-  listContext = { kind, id: data.id, name: data.name };
+  listContext = { kind, id: data.id, name: data.name, series: data.series || null };
   lastBooks = data.books || [];
   resultsPager = {
     mode: kind,
@@ -430,6 +462,11 @@ function renderNamedList(kind, data, page) {
   const label = kind === "author" ? "Автор" : kind === "series" ? "Серия" : "Жанр";
   $("results-title").textContent = `${label}: ${data.name}`;
   resultsSub.textContent = worksLabel(data.total || lastBooks.length);
+  if (kind === "author") {
+    renderAuthorSeries(data.series, data.id);
+  } else {
+    $("author-series").classList.add("hidden");
+  }
   renderBookGrid(lastBooks);
   syncResultsPager();
   show("results");
@@ -1401,11 +1438,11 @@ async function openLists(status) {
 
 function goBackFromBook() {
   if (listContext) {
-    const { kind, id, name } = listContext;
+    const { kind, id, name, series } = listContext;
     const page = resultsPager && resultsPager.mode === kind ? resultsPager.page : 1;
     const total = resultsPager ? resultsPager.total : lastBooks.length;
     history.replaceState({ [kind]: id, p: page }, "", resultsURLFrom(kind, id, page));
-    renderNamedList(kind, { id, name, books: lastBooks, total }, page);
+    renderNamedList(kind, { id, name, books: lastBooks, total, series }, page);
     return;
   }
   if (searchHasFilters(lastSearch)) {
@@ -1426,6 +1463,10 @@ function goBackFromNamedList() {
   listReturn = null;
   if (ret?.type === "book") {
     openBook(ret.id);
+    return;
+  }
+  if (ret?.type === "author") {
+    openAuthor(ret.id);
     return;
   }
   if (ret?.type === "search" || searchHasFilters(lastSearch)) {

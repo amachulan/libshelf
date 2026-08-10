@@ -588,6 +588,50 @@ html.boot-reader body {
 }
 .series, .translators, .edition, .info, .genres { color: var(--muted); }
 .translators, .edition { margin: 0.2rem 0 0; }
+.author-series {
+  margin: 0 0 1.1rem;
+}
+
+.author-series-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0 0 0.45rem;
+}
+
+.author-series-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.author-series-chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+  border-radius: var(--control-radius);
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  text-align: left;
+  max-width: 100%;
+}
+
+.author-series-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent);
+}
+
+.author-series-chip .author-series-count {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-left: 0.35rem;
+}
+
 .results-sub {
   margin: -0.4rem 0 1rem;
   color: var(--muted);

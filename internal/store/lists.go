@@ -16,10 +16,38 @@ type GenreRef struct {
 }
 
 type NamedList struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Books []Book `json:"books"`
-	Total int    `json:"total"`
+	ID     int64           `json:"id"`
+	Name   string          `json:"name"`
+	Books  []Book          `json:"books"`
+	Total  int             `json:"total"`
+	Series []CatalogSeries `json:"series,omitempty"`
+}
+
+// AuthorSeries returns series that contain this author's visible books.
+func (s *Store) AuthorSeries(authorID int64) ([]CatalogSeries, error) {
+	lang, langArgs := s.langPred("b.lang")
+	args := append(append([]any{}, langArgs...), authorID)
+	rows, err := s.db.Query(`
+SELECT s.id, s.title, count(*)
+FROM series s
+JOIN books b ON b.series_id = s.id AND b.deleted = 0`+lang+`
+JOIN book_authors ba ON ba.book_id = b.id AND ba.author_id = ?
+GROUP BY s.id
+ORDER BY s.title
+LIMIT 200`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CatalogSeries
+	for rows.Next() {
+		var it CatalogSeries
+		if err := rows.Scan(&it.ID, &it.Title, &it.Books); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) AuthorBooks(authorID int64, limit, offset int) (*NamedList, error) {
@@ -67,7 +95,17 @@ LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
-	return &NamedList{ID: authorID, Name: strings.TrimSpace(name), Books: page, Total: total}, nil
+	series, err := s.AuthorSeries(authorID)
+	if err != nil {
+		return nil, err
+	}
+	return &NamedList{
+		ID:     authorID,
+		Name:   strings.TrimSpace(name),
+		Books:  page,
+		Total:  total,
+		Series: series,
+	}, nil
 }
 
 func (s *Store) SeriesBooks(seriesID int64, limit, offset int) (*NamedList, error) {
