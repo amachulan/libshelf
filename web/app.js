@@ -1054,7 +1054,9 @@ function maxReaderPageIndex() {
   return Math.max(0, readerPageOffsets.length - 1);
 }
 
-const PAGE_SLIDE_MS = 420;
+/** Tap / buttons / keys — snappier. Drag completion keeps a softer settle. */
+const PAGE_SLIDE_TAP_MS = 250;
+const PAGE_SLIDE_DRAG_MS = 420;
 const PAGE_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
 let pageFlipBusy = false;
 let pageFlipTimer = 0;
@@ -1125,6 +1127,7 @@ function animatePageFlip(dir, fromSlide = 0) {
   const horizontal = pageFlipHorizontal();
   const span = horizontal ? pageViewportBox().w : pageViewportBox().h;
   const toSlide = dir > 0 ? -span : span;
+  const ms = Math.abs(fromSlide) > 8 ? PAGE_SLIDE_DRAG_MS : PAGE_SLIDE_TAP_MS;
 
   m.el.style.clipPath = m.clip;
   m.el.style.opacity = "1";
@@ -1156,10 +1159,10 @@ function animatePageFlip(dir, fromSlide = 0) {
     finish();
   };
   m.el.addEventListener("transitionend", onEnd);
-  pageFlipTimer = setTimeout(finish, PAGE_SLIDE_MS + 100);
+  pageFlipTimer = setTimeout(finish, ms + 100);
 
   requestAnimationFrame(() => {
-    m.el.style.transition = `transform ${PAGE_SLIDE_MS}ms ${PAGE_EASE}`;
+    m.el.style.transition = `transform ${ms}ms ${PAGE_EASE}`;
     if (horizontal) {
       m.el.style.transform = `translate3d(${toSlide}px, ${-m.off}px, 0)`;
     } else {
@@ -1182,7 +1185,7 @@ function animatePageSlideBack(fromSlide = 0) {
     m.el.style.transform = `translate3d(0, ${-m.off + fromSlide}px, 0)`;
   }
   void m.el.offsetWidth;
-  m.el.style.transition = `transform ${Math.round(PAGE_SLIDE_MS * 0.7)}ms ${PAGE_EASE}`;
+  m.el.style.transition = `transform ${Math.round(PAGE_SLIDE_TAP_MS * 0.85)}ms ${PAGE_EASE}`;
   m.el.style.transform = `translate3d(0, ${-m.off}px, 0)`;
 }
 
@@ -1844,7 +1847,7 @@ window.addEventListener("wheel", (e) => {
   wheelAcc = 0;
   wheelLocked = true;
   flipReaderPage(dir);
-  setTimeout(() => { wheelLocked = false; }, PAGE_SLIDE_MS + 40);
+  setTimeout(() => { wheelLocked = false; }, PAGE_SLIDE_TAP_MS + 40);
 }, { passive: false, capture: true });
 
 /** @type {null | { x: number, y: number, t: number, axis: ""|"h"|"v", sliding: boolean, lastX: number, lastY: number, lastT: number }} */
