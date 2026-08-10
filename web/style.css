@@ -1160,20 +1160,10 @@ body.reader-pages .reader-viewport {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  touch-action: none;
-}
-
-body.reader-pages-h .reader-viewport {
-  display: block;
-  /* Clip hard: next CSS column must never paint into the current page. */
-  overflow: hidden;
-  contain: paint;
-}
-
-body.reader-pages-v .reader-viewport {
   display: flex;
   justify-content: center;
   align-items: flex-start;
+  touch-action: none;
 }
 
 body.reader-pages .reader-page-nav {
@@ -1212,49 +1202,22 @@ body.reader-pages.reader-chrome-hidden .reader-page-nav {
   display: none;
 }
 
+/*
+  Page modes (вбок / вниз): one vertical article, translateY page windows.
+  "Вбок" only changes swipe axis — full-book CSS columns were too slow on phones.
+*/
 body.reader-pages .reader-content {
   box-sizing: border-box;
-  margin: 0;
-  overflow: visible;
-  overscroll-behavior: none;
-  touch-action: none;
-  will-change: transform;
-}
-
-/*
-  Horizontal: CSS columns + translateX.
-  No horizontal padding on the multicol box — with border-box, padding-right
-  otherwise shows the next column inside the visible page (mobile bleed).
-  Inset is applied to block children instead. Size set in JS.
-*/
-body.reader-pages-h .reader-content {
-  width: auto;
-  max-width: none;
-  padding: 1.1rem 0;
-  column-fill: auto;
-  column-gap: 0;
-}
-
-body.reader-pages-h .reader-content > * {
-  padding-left: 1.25rem;
-  padding-right: 1.25rem;
-}
-
-body.reader-pages-h .reader-content .chapter,
-body.reader-pages-h .reader-content h3,
-body.reader-pages-h .reader-content .fb2-img,
-body.reader-pages-h .reader-content img {
-  break-inside: avoid;
-  -webkit-column-break-inside: avoid;
-}
-
-/* Vertical: translateY + line-snapped clip (no columns). */
-body.reader-pages-v .reader-content {
   width: min(42rem, 100%);
   height: auto;
   max-width: 42rem;
   max-height: none;
+  margin: 0;
   padding: 1.15rem 1.25rem 1.5rem;
+  overflow: visible;
+  overscroll-behavior: none;
+  touch-action: none;
+  will-change: transform;
   column-width: auto !important;
   column-count: auto !important;
 }
@@ -1309,14 +1272,7 @@ body[data-reader-font="serif"] .reader-content {
     font-size: 1.35rem;
     opacity: 0.28;
   }
-  body.reader-pages-h .reader-content {
-    padding: 0.85rem 0;
-  }
-  body.reader-pages-h .reader-content > * {
-    padding-left: 0.9rem;
-    padding-right: 0.9rem;
-  }
-  body.reader-pages-v .reader-content {
+  body.reader-pages .reader-content {
     padding: 0.85rem 0.85rem 1.1rem;
   }
 }

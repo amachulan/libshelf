@@ -943,7 +943,7 @@ function pageViewportHeight() {
   return pageViewportBox().h;
 }
 
-function clearPageColumnStyles(el) {
+function clearPageLayoutStyles(el) {
   if (!el) return;
   el.style.height = "";
   el.style.width = "";
@@ -951,6 +951,8 @@ function clearPageColumnStyles(el) {
   el.style.columnWidth = "";
   el.style.columnGap = "";
   el.style.columnFill = "";
+  el.style.boxSizing = "";
+  el.style.opacity = "";
 }
 
 /** Bottoms of line/box fragments, relative to the content element top. */
@@ -993,8 +995,12 @@ function collectLineBottoms(root) {
   return out;
 }
 
-/** Vertical pages: translateY + line-snapped clip. */
-function rebuildVerticalPages() {
+/**
+  Build page offsets (line-snapped translateY windows).
+  Both "вбок" and "вниз" use this — CSS multicol on a whole book is too slow on phones.
+  "Вбок" only changes the swipe axis / flip animation.
+ */
+function rebuildReaderPages() {
   const content = readerContentEl();
   if (!content) {
     readerPageOffsets = [0];
@@ -1002,7 +1008,7 @@ function rebuildVerticalPages() {
     return;
   }
 
-  clearPageColumnStyles(content);
+  clearPageLayoutStyles(content);
   content.style.transition = "none";
   content.style.transform = "none";
   content.style.clipPath = "none";
@@ -1044,47 +1050,6 @@ function rebuildVerticalPages() {
   if (readerPageIndex > offsets.length - 1) readerPageIndex = offsets.length - 1;
 }
 
-/** Horizontal pages: CSS columns + translateX (book-like). */
-function rebuildHorizontalPages() {
-  const content = readerContentEl();
-  if (!content) {
-    readerPageOffsets = [0];
-    readerPageStride = 0;
-    return;
-  }
-
-  content.style.transition = "none";
-  content.style.transform = "none";
-  content.style.clipPath = "none";
-
-  // Integer sizes avoid subpixel column/viewport mismatch on mobile.
-  const box = pageViewportBox();
-  const H = Math.max(80, Math.floor(box.h));
-  const W = Math.max(80, Math.floor(box.w));
-  content.style.boxSizing = "border-box";
-  content.style.height = H + "px";
-  content.style.width = W + "px";
-  content.style.maxWidth = W + "px";
-  content.style.columnWidth = W + "px";
-  content.style.columnGap = "0px";
-  content.style.columnFill = "auto";
-
-  void content.offsetWidth;
-  // Prefer measured clientWidth (should equal W); never trust fractional scrollWidth alone.
-  const stride = Math.max(1, Math.round(content.clientWidth) || W);
-  const totalW = content.scrollWidth;
-  readerPageStride = stride;
-  const pages = Math.max(1, Math.ceil((totalW - 0.5) / stride));
-  readerPageOffsets = [];
-  for (let i = 0; i < pages; i++) readerPageOffsets.push(i * stride);
-  if (readerPageIndex > pages - 1) readerPageIndex = pages - 1;
-}
-
-function rebuildReaderPages() {
-  if (pageFlipHorizontal()) rebuildHorizontalPages();
-  else rebuildVerticalPages();
-}
-
 function maxReaderPageIndex() {
   return Math.max(0, readerPageOffsets.length - 1);
 }
@@ -1096,28 +1061,37 @@ function clearPageTransform(el) {
   el.style.transition = "";
 }
 
-function applyPageTransform(smooth) {
+function applyPageTransform(smooth, flipDir = 0) {
   const el = readerContentEl();
   if (!el) return;
   if (!pageModeActive()) {
     clearPageTransform(el);
-    clearPageColumnStyles(el);
+    clearPageLayoutStyles(el);
     return;
   }
   const off = readerPageOffsets[readerPageIndex] || 0;
-  if (pageFlipHorizontal()) {
-    el.style.transition = smooth ? "transform 0.28s ease" : "none";
-    el.style.transform = `translate3d(${-off}px, 0, 0)`;
-    // Multicol border-box is one page wide; do not clipPath (it would blank page 2+).
-    el.style.clipPath = "";
-    return;
-  }
   const total = el.scrollHeight;
   const next = readerPageOffsets[readerPageIndex + 1];
   const bottom = next != null ? next : total;
+  const clip = `inset(${Math.max(0, off)}px 0 ${Math.max(0, total - bottom)}px 0)`;
+  el.style.clipPath = clip;
+
+  // Horizontal mode: same page windows, short sideways settle (not full-book columns).
+  if (pageFlipHorizontal() && smooth && flipDir) {
+    const slide = flipDir > 0 ? -36 : 36;
+    el.style.transition = "none";
+    el.style.transform = `translate3d(${slide}px, ${-off}px, 0)`;
+    el.style.opacity = "0.92";
+    void el.offsetWidth;
+    el.style.transition = "transform 0.2s ease, opacity 0.2s ease";
+    el.style.transform = `translate3d(0, ${-off}px, 0)`;
+    el.style.opacity = "1";
+    return;
+  }
+
   el.style.transition = smooth ? "transform 0.22s ease" : "none";
   el.style.transform = `translate3d(0, ${-off}px, 0)`;
-  el.style.clipPath = `inset(${Math.max(0, off)}px 0 ${Math.max(0, total - bottom)}px 0)`;
+  el.style.opacity = "1";
 }
 
 function lockPageScroll(on) {
@@ -1152,13 +1126,11 @@ function applyReadMode() {
   }
   localStorage.setItem("libshelf_read_mode", readMode);
   const el = readerContentEl();
-  if (el) {
-    if (!paging) {
-      clearPageTransform(el);
-      clearPageColumnStyles(el);
-    } else if (!pageFlipHorizontal()) {
-      clearPageColumnStyles(el);
-    }
+  if (el && !paging) {
+    clearPageTransform(el);
+    clearPageLayoutStyles(el);
+  } else if (el) {
+    clearPageLayoutStyles(el);
   }
 }
 
@@ -1186,11 +1158,6 @@ function setTextAlign(mode) {
 
 function readerPosition() {
   if (pageModeActive()) {
-    if (pageFlipHorizontal()) {
-      const max = maxReaderPageIndex();
-      if (max <= 0) return 0;
-      return Math.min(1, Math.max(0, readerPageIndex / max));
-    }
     const el = readerContentEl();
     const total = el ? el.scrollHeight : 0;
     const maxScroll = Math.max(0, total - pageViewportHeight());
@@ -1208,21 +1175,16 @@ function restoreReaderPosition(pos) {
   const p = Math.min(1, Math.max(0, Number(pos) || 0));
   if (pageModeActive()) {
     rebuildReaderPages();
-    if (pageFlipHorizontal()) {
-      const max = maxReaderPageIndex();
-      readerPageIndex = max <= 0 ? 0 : Math.min(max, Math.round(p * max));
-    } else {
-      const el = readerContentEl();
-      const total = el ? el.scrollHeight : 0;
-      const maxScroll = Math.max(0, total - pageViewportHeight());
-      const targetY = p * maxScroll;
-      let best = 0;
-      for (let i = 0; i < readerPageOffsets.length; i++) {
-        if (readerPageOffsets[i] <= targetY + 1) best = i;
-        else break;
-      }
-      readerPageIndex = best;
+    const el = readerContentEl();
+    const total = el ? el.scrollHeight : 0;
+    const maxScroll = Math.max(0, total - pageViewportHeight());
+    const targetY = p * maxScroll;
+    let best = 0;
+    for (let i = 0; i < readerPageOffsets.length; i++) {
+      if (readerPageOffsets[i] <= targetY + 1) best = i;
+      else break;
     }
+    readerPageIndex = best;
     applyPageTransform(false);
     return;
   }
@@ -1237,7 +1199,7 @@ function flipReaderPage(dir) {
   const next = Math.min(maxReaderPageIndex(), Math.max(0, readerPageIndex + dir));
   if (next === readerPageIndex) return;
   readerPageIndex = next;
-  applyPageTransform(true);
+  applyPageTransform(true, dir);
   scheduleSaveProgress();
 }
 
@@ -1377,7 +1339,7 @@ function closeReader() {
   );
   lockPageScroll(false);
   clearPageTransform(readerContentEl());
-  clearPageColumnStyles(readerContentEl());
+  clearPageLayoutStyles(readerContentEl());
   if (currentBookId) {
     openBook(currentBookId);
   } else {
