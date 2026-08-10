@@ -1054,44 +1054,159 @@ function maxReaderPageIndex() {
   return Math.max(0, readerPageOffsets.length - 1);
 }
 
+const PAGE_SLIDE_MS = 420;
+const PAGE_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+let pageFlipBusy = false;
+let pageFlipTimer = 0;
+
 function clearPageTransform(el) {
   if (!el) return;
   el.style.transform = "";
   el.style.clipPath = "";
   el.style.transition = "";
+  el.style.opacity = "";
 }
 
-function applyPageTransform(smooth, flipDir = 0) {
+function pageWindowMetrics() {
   const el = readerContentEl();
-  if (!el) return;
-  if (!pageModeActive()) {
-    clearPageTransform(el);
-    clearPageLayoutStyles(el);
-    return;
-  }
+  if (!el) return null;
   const off = readerPageOffsets[readerPageIndex] || 0;
   const total = el.scrollHeight;
   const next = readerPageOffsets[readerPageIndex + 1];
   const bottom = next != null ? next : total;
-  const clip = `inset(${Math.max(0, off)}px 0 ${Math.max(0, total - bottom)}px 0)`;
-  el.style.clipPath = clip;
+  return {
+    el,
+    off,
+    total,
+    bottom,
+    clip: `inset(${Math.max(0, off)}px 0 ${Math.max(0, total - bottom)}px 0)`,
+  };
+}
 
-  // Horizontal mode: same page windows, short sideways settle (not full-book columns).
-  if (pageFlipHorizontal() && smooth && flipDir) {
-    const slide = flipDir > 0 ? -36 : 36;
-    el.style.transition = "none";
-    el.style.transform = `translate3d(${slide}px, ${-off}px, 0)`;
-    el.style.opacity = "0.92";
-    void el.offsetWidth;
-    el.style.transition = "transform 0.2s ease, opacity 0.2s ease";
-    el.style.transform = `translate3d(0, ${-off}px, 0)`;
-    el.style.opacity = "1";
+/** Snap content to the current page window (no animation). */
+function settlePageTransform() {
+  const m = pageWindowMetrics();
+  if (!m) return;
+  m.el.style.transition = "none";
+  m.el.style.transform = `translate3d(0, ${-m.off}px, 0)`;
+  m.el.style.clipPath = m.clip;
+  m.el.style.opacity = "1";
+}
+
+function applyPageTransform(smooth, flipDir = 0) {
+  if (!pageModeActive()) {
+    clearPageTransform(readerContentEl());
+    clearPageLayoutStyles(readerContentEl());
     return;
   }
+  if (smooth && flipDir) {
+    animatePageFlip(flipDir, 0);
+    return;
+  }
+  settlePageTransform();
+}
 
-  el.style.transition = smooth ? "transform 0.22s ease" : "none";
-  el.style.transform = `translate3d(0, ${-off}px, 0)`;
-  el.style.opacity = "1";
+/**
+ * Slide the current page off-screen, then snap to the neighbour page.
+ * fromSlide: continue a finger-drag (px along the flip axis).
+ */
+function animatePageFlip(dir, fromSlide = 0) {
+  if (!pageModeActive() || pageFlipBusy) return false;
+  if (readerPageOffsets.length <= 1) rebuildReaderPages();
+  const nextIdx = readerPageIndex + dir;
+  if (nextIdx < 0 || nextIdx > maxReaderPageIndex()) {
+    animatePageSlideBack(fromSlide);
+    return false;
+  }
+
+  const m = pageWindowMetrics();
+  if (!m) return false;
+  pageFlipBusy = true;
+  const horizontal = pageFlipHorizontal();
+  const span = horizontal ? pageViewportBox().w : pageViewportBox().h;
+  const toSlide = dir > 0 ? -span : span;
+
+  m.el.style.clipPath = m.clip;
+  m.el.style.opacity = "1";
+  m.el.style.transition = "none";
+  if (horizontal) {
+    m.el.style.transform = `translate3d(${fromSlide}px, ${-m.off}px, 0)`;
+  } else {
+    m.el.style.transform = `translate3d(0, ${-m.off + fromSlide}px, 0)`;
+  }
+  void m.el.offsetWidth;
+
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    m.el.removeEventListener("transitionend", onEnd);
+    if (pageFlipTimer) {
+      clearTimeout(pageFlipTimer);
+      pageFlipTimer = 0;
+    }
+    readerPageIndex = nextIdx;
+    settlePageTransform();
+    pageFlipBusy = false;
+    scheduleSaveProgress();
+  };
+  const onEnd = (ev) => {
+    if (ev && ev.target !== m.el) return;
+    if (ev && ev.propertyName && ev.propertyName !== "transform") return;
+    finish();
+  };
+  m.el.addEventListener("transitionend", onEnd);
+  pageFlipTimer = setTimeout(finish, PAGE_SLIDE_MS + 100);
+
+  requestAnimationFrame(() => {
+    m.el.style.transition = `transform ${PAGE_SLIDE_MS}ms ${PAGE_EASE}`;
+    if (horizontal) {
+      m.el.style.transform = `translate3d(${toSlide}px, ${-m.off}px, 0)`;
+    } else {
+      m.el.style.transform = `translate3d(0, ${-m.off + toSlide}px, 0)`;
+    }
+  });
+  return true;
+}
+
+/** Spring back after an unfinished drag. */
+function animatePageSlideBack(fromSlide = 0) {
+  const m = pageWindowMetrics();
+  if (!m) return;
+  const horizontal = pageFlipHorizontal();
+  m.el.style.clipPath = m.clip;
+  m.el.style.transition = "none";
+  if (horizontal) {
+    m.el.style.transform = `translate3d(${fromSlide}px, ${-m.off}px, 0)`;
+  } else {
+    m.el.style.transform = `translate3d(0, ${-m.off + fromSlide}px, 0)`;
+  }
+  void m.el.offsetWidth;
+  m.el.style.transition = `transform ${Math.round(PAGE_SLIDE_MS * 0.7)}ms ${PAGE_EASE}`;
+  m.el.style.transform = `translate3d(0, ${-m.off}px, 0)`;
+}
+
+function applyPageDragSlide(slide) {
+  const m = pageWindowMetrics();
+  if (!m || pageFlipBusy) return;
+  const horizontal = pageFlipHorizontal();
+  m.el.style.transition = "none";
+  m.el.style.clipPath = m.clip;
+  if (horizontal) {
+    m.el.style.transform = `translate3d(${slide}px, ${-m.off}px, 0)`;
+  } else {
+    m.el.style.transform = `translate3d(0, ${-m.off + slide}px, 0)`;
+  }
+}
+
+/** Rubber-band when dragging past the first/last page. */
+function resistPageDrag(slide) {
+  const atStart = readerPageIndex <= 0;
+  const atEnd = readerPageIndex >= maxReaderPageIndex();
+  // slide < 0 → toward next; slide > 0 → toward previous
+  if (slide < 0 && atEnd) return slide * 0.22;
+  if (slide > 0 && atStart) return slide * 0.22;
+  return slide;
 }
 
 function lockPageScroll(on) {
@@ -1193,14 +1308,9 @@ function restoreReaderPosition(pos) {
   el.scrollTop = max > 0 ? p * max : 0;
 }
 
-function flipReaderPage(dir) {
+function flipReaderPage(dir, fromSlide = 0) {
   if (!pageModeActive()) return;
-  if (readerPageOffsets.length <= 1) rebuildReaderPages();
-  const next = Math.min(maxReaderPageIndex(), Math.max(0, readerPageIndex + dir));
-  if (next === readerPageIndex) return;
-  readerPageIndex = next;
-  applyPageTransform(true, dir);
-  scheduleSaveProgress();
+  animatePageFlip(dir, fromSlide);
 }
 
 function setReadMode(mode) {
@@ -1331,6 +1441,12 @@ function closeReader() {
   readerBookId = null;
   readerPageIndex = 0;
   readerPageOffsets = [0];
+  pageFlipBusy = false;
+  if (pageFlipTimer) {
+    clearTimeout(pageFlipTimer);
+    pageFlipTimer = 0;
+  }
+  endPageTouch();
   document.body.classList.remove(
     "reader-pages",
     "reader-pages-h",
@@ -1728,47 +1844,131 @@ window.addEventListener("wheel", (e) => {
   wheelAcc = 0;
   wheelLocked = true;
   flipReaderPage(dir);
-  setTimeout(() => { wheelLocked = false; }, 280);
+  setTimeout(() => { wheelLocked = false; }, PAGE_SLIDE_MS + 40);
 }, { passive: false, capture: true });
 
-let readerTouchStartY = 0;
-let readerTouchStartX = 0;
+/** @type {null | { x: number, y: number, t: number, axis: ""|"h"|"v", sliding: boolean, lastX: number, lastY: number, lastT: number }} */
+let pageTouch = null;
+
 function touchOnReaderChrome(target) {
   return !!(target && target.closest && target.closest(".reader-bar, .reader-page-nav"));
 }
-function pageTouchMoveBlock(e) {
+
+// Block native document pan in page mode (Android rubber-band / scroll steal).
+document.addEventListener("touchmove", (e) => {
   if (!pageModeActive()) return;
   if (touchOnReaderChrome(e.target)) return;
   e.preventDefault();
+}, { passive: false, capture: true });
+
+function endPageTouch() {
+  pageTouch = null;
 }
-document.addEventListener("touchmove", pageTouchMoveBlock, { passive: false, capture: true });
+
+function pageTouchPrimary(e) {
+  return e.changedTouches?.[0] || e.touches?.[0] || null;
+}
+
 readerEl.addEventListener("touchstart", (e) => {
-  if (!pageModeActive()) return;
-  readerTouchStartX = e.changedTouches[0]?.clientX || 0;
-  readerTouchStartY = e.changedTouches[0]?.clientY || 0;
+  if (!pageModeActive() || pageFlipBusy) return;
+  if (touchOnReaderChrome(e.target)) {
+    endPageTouch();
+    return;
+  }
+  const t = pageTouchPrimary(e);
+  if (!t) return;
+  pageTouch = {
+    x: t.clientX,
+    y: t.clientY,
+    t: performance.now(),
+    axis: "",
+    sliding: false,
+    lastX: t.clientX,
+    lastY: t.clientY,
+    lastT: performance.now(),
+  };
 }, { passive: true, capture: true });
+
+readerEl.addEventListener("touchmove", (e) => {
+  if (!pageModeActive() || !pageTouch || pageFlipBusy) return;
+  if (touchOnReaderChrome(e.target)) return;
+  const t = pageTouchPrimary(e);
+  if (!t) return;
+  const dx = t.clientX - pageTouch.x;
+  const dy = t.clientY - pageTouch.y;
+  if (!pageTouch.axis) {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    if (pageFlipHorizontal()) {
+      pageTouch.axis = Math.abs(dx) >= Math.abs(dy) ? "h" : "v";
+    } else {
+      pageTouch.axis = Math.abs(dy) >= Math.abs(dx) ? "v" : "h";
+    }
+  }
+  // Finger-follow only on the page-flip axis (Yandex-style drag).
+  const follow = pageFlipHorizontal() ? pageTouch.axis === "h" : pageTouch.axis === "v";
+  if (!follow) return;
+  e.preventDefault();
+  pageTouch.sliding = true;
+  pageTouch.lastX = t.clientX;
+  pageTouch.lastY = t.clientY;
+  pageTouch.lastT = performance.now();
+  const raw = pageFlipHorizontal() ? dx : dy;
+  applyPageDragSlide(resistPageDrag(raw));
+}, { passive: false, capture: true });
+
 readerEl.addEventListener("touchend", (e) => {
   if (!pageModeActive()) return;
-  if (touchOnReaderChrome(e.target)) return;
-  const x = e.changedTouches[0]?.clientX || 0;
-  const y = e.changedTouches[0]?.clientY || 0;
-  const dx = x - readerTouchStartX;
-  const dy = y - readerTouchStartY;
-  if (Math.abs(dy) < 28 && Math.abs(dx) < 28) {
+  if (touchOnReaderChrome(e.target)) {
+    endPageTouch();
+    return;
+  }
+  const t = pageTouchPrimary(e);
+  const touch = pageTouch;
+  endPageTouch();
+  if (!t || !touch || pageFlipBusy) return;
+
+  const dx = t.clientX - touch.x;
+  const dy = t.clientY - touch.y;
+  const dt = Math.max(1, performance.now() - touch.t);
+  const span = pageFlipHorizontal() ? pageViewportBox().w : pageViewportBox().h;
+  const slide = pageFlipHorizontal() ? dx : dy;
+  const vel = slide / dt; // px/ms
+
+  // Tap: side zones turn the page; center toggles chrome.
+  if (!touch.sliding && Math.abs(dx) < 28 && Math.abs(dy) < 28) {
+    const xRatio = t.clientX / Math.max(1, window.innerWidth);
+    if (xRatio >= 0.72) {
+      flipReaderPage(1, 0);
+      return;
+    }
+    if (xRatio <= 0.28) {
+      flipReaderPage(-1, 0);
+      return;
+    }
     const pos = readerPosition();
     document.body.classList.toggle("reader-chrome-hidden");
     requestAnimationFrame(() => restoreReaderPosition(pos));
     return;
   }
-  if (pageFlipHorizontal()) {
-    // Book swipe: left = next, right = previous.
-    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
-    flipReaderPage(dx < 0 ? 1 : -1);
-  } else {
-    // Vertical pages: swipe up = next, down = previous.
-    if (Math.abs(dy) < 40 || Math.abs(dy) < Math.abs(dx)) return;
-    flipReaderPage(dy < 0 ? 1 : -1);
+
+  const follow = pageFlipHorizontal() ? touch.axis === "h" : touch.axis === "v";
+  if (!follow) return;
+
+  const commit =
+    Math.abs(slide) > span * 0.18 ||
+    (Math.abs(slide) > 36 && Math.abs(vel) > 0.45);
+  if (!commit) {
+    animatePageSlideBack(resistPageDrag(slide));
+    return;
   }
+  // Drag left / up → next page.
+  const dir = slide < 0 ? 1 : -1;
+  flipReaderPage(dir, resistPageDrag(slide));
+}, { passive: false, capture: true });
+
+readerEl.addEventListener("touchcancel", () => {
+  if (pageTouch?.sliding) animatePageSlideBack(0);
+  endPageTouch();
 }, { passive: true, capture: true });
 
 $("reader-back").addEventListener("click", closeReader);
