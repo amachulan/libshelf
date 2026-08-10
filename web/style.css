@@ -1165,6 +1165,9 @@ body.reader-pages .reader-viewport {
 
 body.reader-pages-h .reader-viewport {
   display: block;
+  /* Clip hard: next CSS column must never paint into the current page. */
+  overflow: hidden;
+  contain: paint;
 }
 
 body.reader-pages-v .reader-viewport {
@@ -1218,13 +1221,23 @@ body.reader-pages .reader-content {
   will-change: transform;
 }
 
-/* Horizontal: CSS columns + translateX (book-like). Size set in JS. */
+/*
+  Horizontal: CSS columns + translateX.
+  No horizontal padding on the multicol box — with border-box, padding-right
+  otherwise shows the next column inside the visible page (mobile bleed).
+  Inset is applied to block children instead. Size set in JS.
+*/
 body.reader-pages-h .reader-content {
   width: auto;
   max-width: none;
-  padding: 1.15rem 1.35rem;
+  padding: 1.1rem 0;
   column-fill: auto;
   column-gap: 0;
+}
+
+body.reader-pages-h .reader-content > * {
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
 }
 
 body.reader-pages-h .reader-content .chapter,
@@ -1297,7 +1310,11 @@ body[data-reader-font="serif"] .reader-content {
     opacity: 0.28;
   }
   body.reader-pages-h .reader-content {
-    padding: 0.85rem 0.85rem 1.1rem;
+    padding: 0.85rem 0;
+  }
+  body.reader-pages-h .reader-content > * {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
   }
   body.reader-pages-v .reader-content {
     padding: 0.85rem 0.85rem 1.1rem;

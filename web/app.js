@@ -1057,7 +1057,11 @@ function rebuildHorizontalPages() {
   content.style.transform = "none";
   content.style.clipPath = "none";
 
-  const { h: H, w: W } = pageViewportBox();
+  // Integer sizes avoid subpixel column/viewport mismatch on mobile.
+  const box = pageViewportBox();
+  const H = Math.max(80, Math.floor(box.h));
+  const W = Math.max(80, Math.floor(box.w));
+  content.style.boxSizing = "border-box";
   content.style.height = H + "px";
   content.style.width = W + "px";
   content.style.maxWidth = W + "px";
@@ -1066,7 +1070,8 @@ function rebuildHorizontalPages() {
   content.style.columnFill = "auto";
 
   void content.offsetWidth;
-  const stride = Math.max(1, content.clientWidth || W);
+  // Prefer measured clientWidth (should equal W); never trust fractional scrollWidth alone.
+  const stride = Math.max(1, Math.round(content.clientWidth) || W);
   const totalW = content.scrollWidth;
   readerPageStride = stride;
   const pages = Math.max(1, Math.ceil((totalW - 0.5) / stride));
@@ -1103,6 +1108,7 @@ function applyPageTransform(smooth) {
   if (pageFlipHorizontal()) {
     el.style.transition = smooth ? "transform 0.28s ease" : "none";
     el.style.transform = `translate3d(${-off}px, 0, 0)`;
+    // Multicol border-box is one page wide; do not clipPath (it would blank page 2+).
     el.style.clipPath = "";
     return;
   }
