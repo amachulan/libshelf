@@ -1010,11 +1010,13 @@ html.boot-reader body {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.reader-tools .reader-ico-pages,
+.reader-tools .reader-ico-pages-h,
+.reader-tools .reader-ico-pages-v,
 .reader-tools .reader-ico-scroll {
   fill: none;
 }
-.reader-tools .reader-ico-pages rect,
+.reader-tools .reader-ico-pages-h rect,
+.reader-tools .reader-ico-pages-v rect,
 .reader-tools .reader-ico-scroll rect {
   fill: color-mix(in srgb, var(--card) 55%, transparent);
   stroke: currentColor;
@@ -1158,10 +1160,17 @@ body.reader-pages .reader-viewport {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  touch-action: none;
+}
+
+body.reader-pages-h .reader-viewport {
+  display: block;
+}
+
+body.reader-pages-v .reader-viewport {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  touch-action: none;
 }
 
 body.reader-pages .reader-page-nav {
@@ -1200,22 +1209,39 @@ body.reader-pages.reader-chrome-hidden .reader-page-nav {
   display: none;
 }
 
-/*
-  Page mode uses translateY on the article (not scrollTop).
-  Nothing is scrollable, so Android cannot free-pan the text.
-*/
 body.reader-pages .reader-content {
   box-sizing: border-box;
-  width: min(42rem, 100%);
-  height: auto;
-  max-width: 42rem;
-  max-height: none;
   margin: 0;
-  padding: 1.15rem 1.25rem 1.5rem;
   overflow: visible;
   overscroll-behavior: none;
   touch-action: none;
   will-change: transform;
+}
+
+/* Horizontal: CSS columns + translateX (book-like). Size set in JS. */
+body.reader-pages-h .reader-content {
+  width: auto;
+  max-width: none;
+  padding: 1.15rem 1.35rem;
+  column-fill: auto;
+  column-gap: 0;
+}
+
+body.reader-pages-h .reader-content .chapter,
+body.reader-pages-h .reader-content h3,
+body.reader-pages-h .reader-content .fb2-img,
+body.reader-pages-h .reader-content img {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+}
+
+/* Vertical: translateY + line-snapped clip (no columns). */
+body.reader-pages-v .reader-content {
+  width: min(42rem, 100%);
+  height: auto;
+  max-width: 42rem;
+  max-height: none;
+  padding: 1.15rem 1.25rem 1.5rem;
   column-width: auto !important;
   column-count: auto !important;
 }
@@ -1224,6 +1250,22 @@ body.reader-pages .reader-content .fb2-img {
   max-width: 100%;
   max-height: 45vh;
   object-fit: contain;
+}
+
+.reader-face-btn {
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.reader-face-btn.is-serif {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 600;
+}
+
+body[data-reader-font="serif"] .reader-content {
+  font-feature-settings: "liga" 1, "kern" 1;
 }
 
 @media (max-width: 640px) {
@@ -1254,7 +1296,10 @@ body.reader-pages .reader-content .fb2-img {
     font-size: 1.35rem;
     opacity: 0.28;
   }
-  body.reader-pages .reader-content {
+  body.reader-pages-h .reader-content {
+    padding: 0.85rem 0.85rem 1.1rem;
+  }
+  body.reader-pages-v .reader-content {
     padding: 0.85rem 0.85rem 1.1rem;
   }
 }

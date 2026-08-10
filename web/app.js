@@ -52,11 +52,46 @@ let readerBookId = null;
 let readerSaveTimer = null;
 let restorePosition = 0;
 let fontScale = Number(localStorage.getItem("libshelf_font") || "1");
-let readMode = localStorage.getItem("libshelf_read_mode") === "pages" ? "pages" : "scroll";
+/** @type {"pages-h"|"pages-v"|"scroll"} */
+let readMode = (() => {
+  const raw = localStorage.getItem("libshelf_read_mode");
+  if (raw === "pages-h" || raw === "pages-v" || raw === "scroll") return raw;
+  // Legacy: "pages" was vertical page flips.
+  if (raw === "pages") return "pages-v";
+  return "scroll";
+})();
 let textAlign = localStorage.getItem("libshelf_align") === "left" ? "left" : "justify";
+const READER_FONTS = [
+  {
+    id: "sans",
+    label: "Без засечек",
+    family: '"Segoe UI", "Helvetica Neue", Arial, sans-serif',
+  },
+  {
+    id: "serif",
+    label: "С засечками",
+    family: 'Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif',
+  },
+];
+let readerFont =
+  READER_FONTS.some((f) => f.id === localStorage.getItem("libshelf_reader_font"))
+    ? localStorage.getItem("libshelf_reader_font")
+    : "sans";
 let readerPageIndex = 0;
-/** Y offsets (px into #reader-content) where each page starts — snapped to line bottoms. */
+/** Page start offsets (px): X for pages-h, Y for pages-v. */
 let readerPageOffsets = [0];
+let readerPageStride = 0;
+
+function pageModeActive() {
+  return (
+    document.body.classList.contains("reading-mode") &&
+    (readMode === "pages-h" || readMode === "pages-v")
+  );
+}
+
+function pageFlipHorizontal() {
+  return readMode === "pages-h";
+}
 
 async function api(url, opts = {}) {
   const res = await fetch(url, { ...opts, credentials: "same-origin" });
@@ -832,6 +867,35 @@ function applyFontScale(opts = {}) {
   }
 }
 
+function readerFontDef() {
+  return READER_FONTS.find((f) => f.id === readerFont) || READER_FONTS[0];
+}
+
+function applyReaderFont(opts = {}) {
+  const keepPosition = opts.keepPosition !== false;
+  const pos = keepPosition && readerBookId ? readerPosition() : null;
+  const def = readerFontDef();
+  const el = $("reader-content");
+  if (el) el.style.fontFamily = def.family;
+  document.body.dataset.readerFont = def.id;
+  localStorage.setItem("libshelf_reader_font", def.id);
+  const btn = $("reader-face-btn");
+  if (btn) {
+    btn.title = "Шрифт: " + def.label;
+    btn.setAttribute("aria-label", btn.title);
+    btn.classList.toggle("is-serif", def.id === "serif");
+  }
+  if (pos != null) {
+    requestAnimationFrame(() => restoreReaderPosition(pos));
+  }
+}
+
+function cycleReaderFont() {
+  const i = READER_FONTS.findIndex((f) => f.id === readerFont);
+  readerFont = READER_FONTS[(i + 1) % READER_FONTS.length].id;
+  applyReaderFont();
+}
+
 function readerContentEl() {
   return $("reader-content");
 }
@@ -840,39 +904,53 @@ function readerViewportEl() {
   return document.querySelector(".reader-viewport");
 }
 
-function pageModeActive() {
-  return document.body.classList.contains("reading-mode") && readMode === "pages";
-}
-
-/** Visible height of the page viewport (layout can be taller than the screen with browser chrome). */
-function pageViewportHeight() {
+/** Visible size of the page viewport (layout can be taller than the screen with browser chrome). */
+function pageViewportBox() {
   const vp = readerViewportEl();
   let h = vp ? vp.clientHeight : 0;
+  let w = vp ? vp.clientWidth : 0;
 
-  // Mobile URL/toolbars: fixed 100%/100vh often taller than what is actually painted.
   const vv = window.visualViewport;
   if (vv && vp) {
     const rect = vp.getBoundingClientRect();
     const visTop = Math.max(rect.top, vv.offsetTop);
     const visBottom = Math.min(rect.bottom, vv.offsetTop + vv.height);
-    const visible = visBottom - visTop;
-    if (visible >= 80) {
-      h = h > 0 ? Math.min(h, visible) : visible;
-    }
-  } else if (vv && vv.height >= 80) {
-    h = h > 0 ? Math.min(h, vv.height) : vv.height;
+    const visLeft = Math.max(rect.left, vv.offsetLeft);
+    const visRight = Math.min(rect.right, vv.offsetLeft + vv.width);
+    const visibleH = visBottom - visTop;
+    const visibleW = visRight - visLeft;
+    if (visibleH >= 80) h = h > 0 ? Math.min(h, visibleH) : visibleH;
+    if (visibleW >= 80) w = w > 0 ? Math.min(w, visibleW) : visibleW;
+  } else if (vv) {
+    if (vv.height >= 80) h = h > 0 ? Math.min(h, vv.height) : vv.height;
+    if (vv.width >= 80) w = w > 0 ? Math.min(w, vv.width) : vv.width;
   }
 
-  if (h >= 80) {
-    // Keep a small pad so the last line never sits under the fold / home indicator.
-    return Math.max(80, h - 2);
+  if (h < 80 || w < 80) {
+    const bar = document.querySelector(".reader-bar");
+    const barH = bar && !document.body.classList.contains("reader-chrome-hidden")
+      ? bar.offsetHeight
+      : 0;
+    const fallbackH = (vv && vv.height >= 80 ? vv.height : window.innerHeight) - barH;
+    const fallbackW = vv && vv.width >= 80 ? vv.width : window.innerWidth;
+    if (h < 80) h = fallbackH;
+    if (w < 80) w = fallbackW;
   }
-  const bar = document.querySelector(".reader-bar");
-  const barH = bar && !document.body.classList.contains("reader-chrome-hidden")
-    ? bar.offsetHeight
-    : 0;
-  const fallback = (vv && vv.height >= 80 ? vv.height : window.innerHeight) - barH;
-  return Math.max(80, fallback - 2);
+  return { h: Math.max(80, h - 2), w: Math.max(80, w) };
+}
+
+function pageViewportHeight() {
+  return pageViewportBox().h;
+}
+
+function clearPageColumnStyles(el) {
+  if (!el) return;
+  el.style.height = "";
+  el.style.width = "";
+  el.style.maxWidth = "";
+  el.style.columnWidth = "";
+  el.style.columnGap = "";
+  el.style.columnFill = "";
 }
 
 /** Bottoms of line/box fragments, relative to the content element top. */
@@ -915,14 +993,16 @@ function collectLineBottoms(root) {
   return out;
 }
 
-function rebuildReaderPages() {
+/** Vertical pages: translateY + line-snapped clip. */
+function rebuildVerticalPages() {
   const content = readerContentEl();
   if (!content) {
     readerPageOffsets = [0];
+    readerPageStride = 0;
     return;
   }
 
-  // Measure without transform/clip so line boxes are stable.
+  clearPageColumnStyles(content);
   content.style.transition = "none";
   content.style.transform = "none";
   content.style.clipPath = "none";
@@ -931,6 +1011,7 @@ function rebuildReaderPages() {
   const total = content.scrollHeight;
   if (H < 80 || total <= H + 1) {
     readerPageOffsets = [0];
+    readerPageStride = H;
     return;
   }
 
@@ -940,8 +1021,6 @@ function rebuildReaderPages() {
   const eps = 1;
 
   while (pageTop + H < total - eps) {
-    // Prefer a line break slightly above the fold so a line cannot be painted half-cut
-    // when visualViewport is a few px shorter than the layout box.
     const limit = pageTop + H - 4;
     let best = -1;
     for (let i = 0; i < bottoms.length; i++) {
@@ -961,6 +1040,44 @@ function rebuildReaderPages() {
   }
 
   readerPageOffsets = offsets;
+  readerPageStride = H;
+  if (readerPageIndex > offsets.length - 1) readerPageIndex = offsets.length - 1;
+}
+
+/** Horizontal pages: CSS columns + translateX (book-like). */
+function rebuildHorizontalPages() {
+  const content = readerContentEl();
+  if (!content) {
+    readerPageOffsets = [0];
+    readerPageStride = 0;
+    return;
+  }
+
+  content.style.transition = "none";
+  content.style.transform = "none";
+  content.style.clipPath = "none";
+
+  const { h: H, w: W } = pageViewportBox();
+  content.style.height = H + "px";
+  content.style.width = W + "px";
+  content.style.maxWidth = W + "px";
+  content.style.columnWidth = W + "px";
+  content.style.columnGap = "0px";
+  content.style.columnFill = "auto";
+
+  void content.offsetWidth;
+  const stride = Math.max(1, content.clientWidth || W);
+  const totalW = content.scrollWidth;
+  readerPageStride = stride;
+  const pages = Math.max(1, Math.ceil((totalW - 0.5) / stride));
+  readerPageOffsets = [];
+  for (let i = 0; i < pages; i++) readerPageOffsets.push(i * stride);
+  if (readerPageIndex > pages - 1) readerPageIndex = pages - 1;
+}
+
+function rebuildReaderPages() {
+  if (pageFlipHorizontal()) rebuildHorizontalPages();
+  else rebuildVerticalPages();
 }
 
 function maxReaderPageIndex() {
@@ -979,16 +1096,22 @@ function applyPageTransform(smooth) {
   if (!el) return;
   if (!pageModeActive()) {
     clearPageTransform(el);
+    clearPageColumnStyles(el);
+    return;
+  }
+  const off = readerPageOffsets[readerPageIndex] || 0;
+  if (pageFlipHorizontal()) {
+    el.style.transition = smooth ? "transform 0.28s ease" : "none";
+    el.style.transform = `translate3d(${-off}px, 0, 0)`;
+    el.style.clipPath = "";
     return;
   }
   const total = el.scrollHeight;
-  const top = readerPageOffsets[readerPageIndex] || 0;
   const next = readerPageOffsets[readerPageIndex + 1];
-  // Clip to the line-snapped page end so a sliced line is never shown at the bottom.
   const bottom = next != null ? next : total;
   el.style.transition = smooth ? "transform 0.22s ease" : "none";
-  el.style.transform = `translate3d(0, ${-top}px, 0)`;
-  el.style.clipPath = `inset(${Math.max(0, top)}px 0 ${Math.max(0, total - bottom)}px 0)`;
+  el.style.transform = `translate3d(0, ${-off}px, 0)`;
+  el.style.clipPath = `inset(${Math.max(0, off)}px 0 ${Math.max(0, total - bottom)}px 0)`;
 }
 
 function lockPageScroll(on) {
@@ -997,25 +1120,39 @@ function lockPageScroll(on) {
 }
 
 function applyReadMode() {
-  const paging = readMode === "pages" && document.body.classList.contains("reading-mode");
+  const paging = pageModeActive();
   // Only while reading — otherwise page-mode CSS leaks onto the catalog.
   document.body.classList.toggle("reader-pages", paging);
+  document.body.classList.toggle("reader-pages-h", paging && readMode === "pages-h");
+  document.body.classList.toggle("reader-pages-v", paging && readMode === "pages-v");
   if (!paging) document.body.classList.remove("reader-chrome-hidden");
   lockPageScroll(paging);
   const btn = $("reader-mode-btn");
   if (btn) {
-    const pagesIco = btn.querySelector(".reader-ico-pages");
+    const pagesH = btn.querySelector(".reader-ico-pages-h");
+    const pagesV = btn.querySelector(".reader-ico-pages-v");
     const scrollIco = btn.querySelector(".reader-ico-scroll");
-    pagesIco?.classList.toggle("hidden", readMode !== "pages");
-    scrollIco?.classList.toggle("hidden", readMode === "pages");
-    btn.title = readMode === "pages" ? "Сплошной текст" : "Листать страницами";
+    pagesH?.classList.toggle("hidden", readMode !== "pages-h");
+    pagesV?.classList.toggle("hidden", readMode !== "pages-v");
+    scrollIco?.classList.toggle("hidden", readMode !== "scroll");
+    // Title describes the next mode on click.
+    const titles = {
+      "pages-h": "Листать вниз",
+      "pages-v": "Сплошной текст",
+      scroll: "Листать вбок",
+    };
+    btn.title = titles[readMode] || "Режим чтения";
     btn.setAttribute("aria-label", btn.title);
   }
   localStorage.setItem("libshelf_read_mode", readMode);
   const el = readerContentEl();
   if (el) {
-    el.style.columnWidth = "";
-    if (!paging) clearPageTransform(el);
+    if (!paging) {
+      clearPageTransform(el);
+      clearPageColumnStyles(el);
+    } else if (!pageFlipHorizontal()) {
+      clearPageColumnStyles(el);
+    }
   }
 }
 
@@ -1042,7 +1179,12 @@ function setTextAlign(mode) {
 }
 
 function readerPosition() {
-  if (readMode === "pages") {
+  if (pageModeActive()) {
+    if (pageFlipHorizontal()) {
+      const max = maxReaderPageIndex();
+      if (max <= 0) return 0;
+      return Math.min(1, Math.max(0, readerPageIndex / max));
+    }
     const el = readerContentEl();
     const total = el ? el.scrollHeight : 0;
     const maxScroll = Math.max(0, total - pageViewportHeight());
@@ -1058,18 +1200,23 @@ function readerPosition() {
 
 function restoreReaderPosition(pos) {
   const p = Math.min(1, Math.max(0, Number(pos) || 0));
-  if (readMode === "pages") {
+  if (pageModeActive()) {
     rebuildReaderPages();
-    const el = readerContentEl();
-    const total = el ? el.scrollHeight : 0;
-    const maxScroll = Math.max(0, total - pageViewportHeight());
-    const targetY = p * maxScroll;
-    let best = 0;
-    for (let i = 0; i < readerPageOffsets.length; i++) {
-      if (readerPageOffsets[i] <= targetY + 1) best = i;
-      else break;
+    if (pageFlipHorizontal()) {
+      const max = maxReaderPageIndex();
+      readerPageIndex = max <= 0 ? 0 : Math.min(max, Math.round(p * max));
+    } else {
+      const el = readerContentEl();
+      const total = el ? el.scrollHeight : 0;
+      const maxScroll = Math.max(0, total - pageViewportHeight());
+      const targetY = p * maxScroll;
+      let best = 0;
+      for (let i = 0; i < readerPageOffsets.length; i++) {
+        if (readerPageOffsets[i] <= targetY + 1) best = i;
+        else break;
+      }
+      readerPageIndex = best;
     }
-    readerPageIndex = best;
     applyPageTransform(false);
     return;
   }
@@ -1079,7 +1226,7 @@ function restoreReaderPosition(pos) {
 }
 
 function flipReaderPage(dir) {
-  if (readMode !== "pages") return;
+  if (!pageModeActive()) return;
   if (readerPageOffsets.length <= 1) rebuildReaderPages();
   const next = Math.min(maxReaderPageIndex(), Math.max(0, readerPageIndex + dir));
   if (next === readerPageIndex) return;
@@ -1089,7 +1236,8 @@ function flipReaderPage(dir) {
 }
 
 function setReadMode(mode) {
-  const next = mode === "pages" ? "pages" : "scroll";
+  const allowed = { "pages-h": 1, "pages-v": 1, scroll: 1 };
+  const next = allowed[mode] ? mode : "scroll";
   const pos = readerBookId ? readerPosition() : restorePosition;
   readMode = next;
   applyReadMode();
@@ -1099,6 +1247,12 @@ function setReadMode(mode) {
       scheduleSaveProgress();
     });
   }
+}
+
+function cycleReadMode() {
+  const order = ["pages-h", "pages-v", "scroll"];
+  const i = order.indexOf(readMode);
+  setReadMode(order[(i + 1) % order.length]);
 }
 
 function saveReaderProgress() {
@@ -1138,6 +1292,7 @@ async function openReader(id) {
   restorePosition = data.position || 0;
   $("reader-title").textContent = data.title || "";
   $("reader-content").innerHTML = data.html || "";
+  applyReaderFont({ keepPosition: false });
   applyFontScale({ keepPosition: false });
 
   applyReadMode();
@@ -1180,16 +1335,9 @@ function syncFullscreenButton() {
 
 function preserveReaderPageAfterResize() {
   if (!pageModeActive() || !readerBookId) return;
-  const y = readerPageOffsets[readerPageIndex] || 0;
+  const pos = readerPosition();
   requestAnimationFrame(() => {
-    rebuildReaderPages();
-    let best = 0;
-    for (let i = 0; i < readerPageOffsets.length; i++) {
-      if (readerPageOffsets[i] <= y + 1) best = i;
-      else break;
-    }
-    readerPageIndex = best;
-    applyPageTransform(false);
+    restoreReaderPosition(pos);
   });
 }
 
@@ -1215,9 +1363,15 @@ function closeReader() {
   readerBookId = null;
   readerPageIndex = 0;
   readerPageOffsets = [0];
-  document.body.classList.remove("reader-pages", "reader-chrome-hidden");
+  document.body.classList.remove(
+    "reader-pages",
+    "reader-pages-h",
+    "reader-pages-v",
+    "reader-chrome-hidden"
+  );
   lockPageScroll(false);
   clearPageTransform(readerContentEl());
+  clearPageColumnStyles(readerContentEl());
   if (currentBookId) {
     openBook(currentBookId);
   } else {
@@ -1580,7 +1734,7 @@ window.addEventListener("popstate", () => {
 
 window.addEventListener("scroll", () => {
   if (!document.body.classList.contains("reading-mode")) return;
-  if (readMode === "pages") {
+  if (pageModeActive()) {
     // Kill any native window scroll that sneaks through on desktop trackpads.
     if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
     return;
@@ -1596,7 +1750,9 @@ window.addEventListener("wheel", (e) => {
   if (!pageModeActive()) return;
   e.preventDefault();
   if (wheelLocked) return;
-  wheelAcc += e.deltaY;
+  // Prefer horizontal delta; fall back to vertical (mouse wheel).
+  const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  wheelAcc += delta;
   if (wheelResetTimer) clearTimeout(wheelResetTimer);
   wheelResetTimer = setTimeout(() => { wheelAcc = 0; }, 180);
   if (Math.abs(wheelAcc) < 48) return;
@@ -1604,7 +1760,7 @@ window.addEventListener("wheel", (e) => {
   wheelAcc = 0;
   wheelLocked = true;
   flipReaderPage(dir);
-  setTimeout(() => { wheelLocked = false; }, 220);
+  setTimeout(() => { wheelLocked = false; }, 280);
 }, { passive: false, capture: true });
 
 let readerTouchStartY = 0;
@@ -1629,26 +1785,36 @@ readerEl.addEventListener("touchend", (e) => {
   const x = e.changedTouches[0]?.clientX || 0;
   const y = e.changedTouches[0]?.clientY || 0;
   const dx = x - readerTouchStartX;
-  const dy = readerTouchStartY - y;
+  const dy = y - readerTouchStartY;
   if (Math.abs(dy) < 28 && Math.abs(dx) < 28) {
     const pos = readerPosition();
     document.body.classList.toggle("reader-chrome-hidden");
     requestAnimationFrame(() => restoreReaderPosition(pos));
     return;
   }
-  if (Math.abs(dy) < 40 || Math.abs(dy) < Math.abs(dx)) return;
-  flipReaderPage(dy > 0 ? 1 : -1);
+  if (pageFlipHorizontal()) {
+    // Book swipe: left = next, right = previous.
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    flipReaderPage(dx < 0 ? 1 : -1);
+  } else {
+    // Vertical pages: swipe up = next, down = previous.
+    if (Math.abs(dy) < 40 || Math.abs(dy) < Math.abs(dx)) return;
+    flipReaderPage(dy < 0 ? 1 : -1);
+  }
 }, { passive: true, capture: true });
 
 $("reader-back").addEventListener("click", closeReader);
 $("reader-mode-btn").addEventListener("click", () => {
-  setReadMode(readMode === "pages" ? "scroll" : "pages");
+  cycleReadMode();
 });
 $("reader-align-btn").addEventListener("click", () => {
   setTextAlign(textAlign === "justify" ? "left" : "justify");
 });
 $("reader-page-prev").addEventListener("click", () => flipReaderPage(-1));
 $("reader-page-next").addEventListener("click", () => flipReaderPage(1));
+$("reader-face-btn").addEventListener("click", () => {
+  cycleReaderFont();
+});
 $("reader-font-up").addEventListener("click", () => {
   fontScale = Math.min(1.6, Math.round((fontScale + 0.1) * 10) / 10);
   applyFontScale();
@@ -1683,7 +1849,7 @@ let readerViewportTimer = null;
 let lastPageViewportH = 0;
 
 function onReaderViewportChange() {
-  if (!document.body.classList.contains("reading-mode") || readMode !== "pages" || !readerBookId) return;
+  if (!pageModeActive() || !readerBookId) return;
   clearTimeout(readerViewportTimer);
   readerViewportTimer = setTimeout(() => {
     const h = pageViewportHeight();
@@ -1916,7 +2082,8 @@ $("user-form").addEventListener("submit", async (e) => {
   if (readId) show("reader");
   if (!(await loadSession())) return;
   if (!readId) await loadStats();
-  applyFontScale();
+  applyReaderFont({ keepPosition: false });
+  applyFontScale({ keepPosition: false });
   applyTextAlign();
   applyReadMode();
   if (params.get("users") === "1" && currentUser?.role === "admin") {
