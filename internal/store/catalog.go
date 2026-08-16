@@ -549,10 +549,14 @@ LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
-	page, total, err := s.groupAndPaginate(books, limit, offset)
+	works, err := s.groupWorks(books)
 	if err != nil {
 		return nil, err
 	}
+	if sort == "popular" {
+		sortWorksPopular(works)
+	}
+	page, total := paginateBooks(works, limit, offset)
 	return &NamedList{ID: genreID, Name: code, Code: code, Sort: sort, Books: page, Total: total}, nil
 }
 

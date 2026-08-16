@@ -152,16 +152,23 @@ ORDER BY book_id, author_id`, args...)
 	return out, nil
 }
 
-func (s *Store) groupAndPaginate(books []Book, limit, offset int) ([]Book, int, error) {
+func (s *Store) groupWorks(books []Book) ([]Book, error) {
 	ids := make([]int64, len(books))
 	for i := range books {
 		ids[i] = books[i].ID
 	}
 	auth, err := s.authorIDsForBooks(ids)
 	if err != nil {
+		return nil, err
+	}
+	return groupBooksToWorks(books, auth), nil
+}
+
+func (s *Store) groupAndPaginate(books []Book, limit, offset int) ([]Book, int, error) {
+	works, err := s.groupWorks(books)
+	if err != nil {
 		return nil, 0, err
 	}
-	works := groupBooksToWorks(books, auth)
 	page, total := paginateBooks(works, limit, offset)
 	return page, total, nil
 }
