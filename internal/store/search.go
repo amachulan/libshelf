@@ -193,6 +193,8 @@ LIMIT ?`)
 }
 
 // SearchAuthors returns authors whose name parts match all query tokens (any order).
+// Ranked by visible book count, then limited — unlike catalog prefix browse,
+// which pages alphabetically and must not pre-cut by popularity.
 func (s *Store) SearchAuthors(query string, limit int) ([]CatalogPerson, error) {
 	tokens := strings.Fields(foldYo(strings.TrimSpace(query)))
 	if len(tokens) == 0 {
@@ -206,13 +208,12 @@ func (s *Store) SearchAuthors(query string, limit int) ([]CatalogPerson, error) 
 	}
 
 	lang, langArgs := s.langPred("b.lang")
-	has, hasArgs := s.authorHasVisibleBooksSQL()
 
 	var (
 		where []string
 		args  []any
 	)
-	args = append(args, hasArgs...)
+	args = append(args, langArgs...)
 	for _, tok := range tokens {
 		pats := likePrefixPatterns(tok)
 		wLast, aLast := likeOrColumn("a.last_name", pats)
@@ -224,26 +225,18 @@ func (s *Store) SearchAuthors(query string, limit int) ([]CatalogPerson, error) 
 		args = append(args, aMid...)
 	}
 	args = append(args, limit)
-	args = append(args, langArgs...)
 
 	rows, err := s.db.Query(`
-WITH matched AS (
-  SELECT a.id,
-         trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name) AS name,
-         a.last_name,
-         a.first_name
-  FROM authors a
-  WHERE `+has+`
-    AND `+strings.Join(where, " AND ")+`
-  ORDER BY a.last_name, a.first_name
-  LIMIT ?
-)
-SELECT m.id, m.name,
-  (SELECT count(*) FROM book_authors ba
-   JOIN books b ON b.id = ba.book_id AND b.deleted = 0`+lang+`
-   WHERE ba.author_id = m.id)
-FROM matched m
-ORDER BY 3 DESC, m.last_name, m.first_name`, args...)
+SELECT a.id,
+       trim(a.last_name || ' ' || a.first_name || ' ' || a.middle_name) AS name,
+       count(*)
+FROM authors a
+JOIN book_authors ba ON ba.author_id = a.id
+JOIN books b ON b.id = ba.book_id AND b.deleted = 0`+lang+`
+WHERE `+strings.Join(where, " AND ")+`
+GROUP BY a.id
+ORDER BY 3 DESC, a.last_name, a.first_name
+LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
