@@ -201,10 +201,10 @@ func (s *Store) SearchAuthors(query string, limit int) ([]CatalogPerson, error) 
 		return nil, nil
 	}
 	if limit <= 0 {
-		limit = 8
+		limit = 24
 	}
-	if limit > 20 {
-		limit = 20
+	if limit > 40 {
+		limit = 40
 	}
 
 	lang, langArgs := s.langPred("b.lang")
