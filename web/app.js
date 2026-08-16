@@ -234,18 +234,52 @@ function coverSeed(title, authors) {
   return h;
 }
 
-function coverInitials(title, authors) {
-  const words = String(title || "")
-    .replace(/^[.\s«»"'…—–-]+/u, "")
-    .split(/\s+/)
-    .filter((w) => /[\p{L}\p{N}]/u.test(w));
-  if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
+function escapeXml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function wrapCoverTitle(title, maxChars, maxLines) {
+  const words = String(title || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (!words.length) return ["Книга"];
+  const lines = [];
+  let i = 0;
+  while (i < words.length && lines.length < maxLines) {
+    const last = lines.length === maxLines - 1;
+    if (last) {
+      let rest = words.slice(i).join(" ");
+      if (rest.length > maxChars) rest = rest.slice(0, Math.max(1, maxChars - 1)) + "…";
+      lines.push(rest);
+      break;
+    }
+    let line = words[i++];
+    while (i < words.length && (line + " " + words[i]).length <= maxChars) {
+      line += " " + words[i++];
+    }
+    if (line.length > maxChars) line = line.slice(0, Math.max(1, maxChars - 1)) + "…";
+    lines.push(line);
   }
-  if (words[0] && words[0].length >= 2) return words[0].slice(0, 2).toUpperCase();
-  if (words[0]) return words[0][0].toUpperCase();
-  const a = String(authors || "").trim();
-  return a ? a.slice(0, 2).toUpperCase() : "К";
+  return lines;
+}
+
+function coverTitleLayout(title) {
+  const text = String(title || "").replace(/\s+/g, " ").trim();
+  const tries = [
+    { size: 22, chars: 11, lines: 5 },
+    { size: 18, chars: 14, lines: 6 },
+    { size: 15, chars: 17, lines: 7 },
+    { size: 13, chars: 20, lines: 8 },
+  ];
+  for (const t of tries) {
+    const lines = wrapCoverTitle(text, t.chars, t.lines);
+    const shown = lines.join(" ").replace(/…$/, "");
+    const fits = shown.length >= text.length || t === tries[tries.length - 1];
+    if (fits) return { lines, size: t.size };
+  }
+  return { lines: wrapCoverTitle(text, 20, 8), size: 13 };
 }
 
 function placeholderCover(title, authors) {
@@ -258,15 +292,20 @@ function placeholderCover(title, authors) {
     : ["#a8b6a6", "#a4aebc", "#b6a8b0", "#b8b09c", "#a8b0bc", "#b6a8a4"];
   const ink = dark ? "#e8efe9" : "#2a2e2c";
   const i = coverSeed(title, authors) % palettes.length;
-  const initials = coverInitials(title, authors);
+  const { lines, size } = coverTitleLayout(title);
+  const lineH = size * 1.28;
+  const startY = 150 - (lines.length * lineH) / 2 + size * 0.82;
+  const texts = lines.map((line, idx) => {
+    const y = (startY + idx * lineH).toFixed(1);
+    return `<text x="107" y="${y}" text-anchor="middle" fill="${ink}" fill-opacity="0.92" font-family="Georgia, 'Times New Roman', serif" font-size="${size}" font-weight="600">${escapeXml(line)}</text>`;
+  }).join("");
   return "data:image/svg+xml," + encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
       <rect width="200" height="300" fill="${palettes[i]}"/>
       <rect x="0" y="0" width="14" height="300" fill="${bands[i]}"/>
       <rect x="28" y="36" width="148" height="3" fill="${ink}" fill-opacity="0.18"/>
       <rect x="28" y="261" width="148" height="3" fill="${ink}" fill-opacity="0.18"/>
-      <text x="107" y="168" text-anchor="middle" fill="${ink}" fill-opacity="0.88"
-        font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="600">${initials}</text>
+      ${texts}
     </svg>`
   );
 }
