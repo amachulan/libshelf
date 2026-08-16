@@ -31,7 +31,7 @@ const AUTHOR_CHIP_PREVIEW = 24;
 /** @type {SearchParams} */
 let lastSearch = emptySearch();
 let lastBooks = [];
-let listContext = null; // { kind: 'author'|'series'|'genre', id, name, series? }
+let listContext = null; // { kind: 'author'|'series'|'genre'|'lists', id, name, series?, status? }
 /** Where ← on a named list should go (book page / catalog / search / author). */
 /** @type {{ type: 'book', id: number } | { type: 'author', id: number } | { type: 'catalog', tab: string, letter: string } | { type: 'search' } | null} */
 let listReturn = null;
@@ -799,7 +799,9 @@ async function openBook(id) {
   currentBookId = b.id;
   const qs = new URLSearchParams();
   qs.set("book", id);
-  if (searchHasFilters(lastSearch)) {
+  if (listContext?.kind === "lists") {
+    qs.set("lists", listContext.status || shelfTab);
+  } else if (searchHasFilters(lastSearch)) {
     const searchQS = new URLSearchParams(searchPageURL(lastSearch, 1).slice(2));
     searchQS.forEach((v, k) => {
       if (k !== "p") qs.set(k, v);
@@ -808,6 +810,7 @@ async function openBook(id) {
   if (listContext?.kind === "author") qs.set("author", listContext.id);
   if (listContext?.kind === "series") qs.set("series", listContext.id);
   history.pushState({ book: id }, "", "/?" + qs.toString());
+  $("back").textContent = listContext?.kind === "lists" ? "К списку" : "К результатам";
 
   $("book-title").textContent = b.title;
 
@@ -1756,11 +1759,16 @@ async function openLists(status) {
   }
   const data = await res.json();
   const books = (data.items || []).map((it) => it.book).filter(Boolean);
+  listContext = { kind: "lists", status: shelfTab };
   renderBookGrid(books, $("lists-grid"), $("lists-empty"));
   show("lists");
 }
 
 function goBackFromBook() {
+  if (listContext?.kind === "lists") {
+    openLists(listContext.status || shelfTab);
+    return;
+  }
   if (listContext) {
     const { kind, id, name, series } = listContext;
     const page = resultsPager && resultsPager.mode === kind ? resultsPager.page : 1;
@@ -2102,7 +2110,7 @@ async function bootFromURL() {
     await openReader(read);
     return;
   }
-  if (lists && currentUser) {
+  if (lists && currentUser && !book && !read) {
     await openLists(lists);
     return;
   }
@@ -2125,9 +2133,10 @@ async function bootFromURL() {
     return;
   }
   if (book) {
+    if (lists) listContext = { kind: "lists", status: lists };
     if (author) listContext = { kind: "author", id: Number(author) };
     if (series) listContext = { kind: "series", id: Number(series) };
-    if (searchHasFilters(search) && lastBooks.length === 0) {
+    if (!lists && searchHasFilters(search) && lastBooks.length === 0) {
       await doSearch(search, page);
     }
     await openBook(book);
