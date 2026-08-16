@@ -501,7 +501,7 @@ GROUP BY g.id`, langArgs...)
 	return out, nil
 }
 
-func (s *Store) GenreBooks(code string, limit, offset int) (*NamedList, error) {
+func (s *Store) GenreBooks(code string, limit, offset int, sort string) (*NamedList, error) {
 	code = strings.TrimSpace(code)
 	if code == "" {
 		return nil, ErrNotFound
@@ -515,6 +515,7 @@ func (s *Store) GenreBooks(code string, limit, offset int) (*NamedList, error) {
 	if offset < 0 {
 		offset = 0
 	}
+	sort = NormalizeListSort(sort)
 	var genreID int64
 	err := s.db.QueryRow(`SELECT id FROM genres WHERE code = ?`, code).Scan(&genreID)
 	if err == sql.ErrNoRows {
@@ -522,6 +523,13 @@ func (s *Store) GenreBooks(code string, limit, offset int) (*NamedList, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	order := `b.lib_rate DESC, b.title`
+	switch sort {
+	case "new":
+		order = `b.added DESC, coalesce(b.year, 0) DESC, b.title`
+	case "title":
+		order = `b.title`
 	}
 	lang, langArgs := s.langPred("b.lang")
 	args := append([]any{genreID}, append(langArgs, listGroupCap)...)
@@ -531,7 +539,7 @@ FROM books b
 LEFT JOIN series s ON s.id = b.series_id
 JOIN book_genres bg ON bg.book_id = b.id AND bg.genre_id = ?
 WHERE b.deleted = 0`+lang+`
-ORDER BY b.title
+ORDER BY `+order+`
 LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
@@ -545,7 +553,7 @@ LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
-	return &NamedList{ID: genreID, Name: code, Books: page, Total: total}, nil
+	return &NamedList{ID: genreID, Name: code, Code: code, Sort: sort, Books: page, Total: total}, nil
 }
 
 func scanCatalogPeople(rows *sql.Rows) ([]CatalogPerson, error) {

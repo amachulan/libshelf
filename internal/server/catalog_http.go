@@ -95,7 +95,7 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		code := parts[1]
-		list, err := s.store.GenreBooks(code, limit, offset)
+		list, err := s.store.GenreBooks(code, limit, offset, r.URL.Query().Get("sort"))
 		if err != nil {
 			if err == store.ErrNotFound {
 				httpError(w, err, 404)

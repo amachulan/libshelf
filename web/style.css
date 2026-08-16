@@ -637,6 +637,13 @@ html.boot-reader body {
   border-style: dashed;
 }
 
+.list-sort {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1.1rem;
+}
+
 .results-sub {
   margin: -0.4rem 0 1rem;
   color: var(--muted);

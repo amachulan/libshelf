@@ -420,7 +420,7 @@ func (s *Server) opdsGenres(w http.ResponseWriter, base string) {
 
 func (s *Server) opdsGenreBooks(w http.ResponseWriter, r *http.Request, base, code string) {
 	code, _ = url.PathUnescape(code)
-	list, err := s.store.GenreBooks(code, 100, 0)
+	list, err := s.store.GenreBooks(code, 100, 0, "popular")
 	if err != nil {
 		if err == store.ErrNotFound {
 			http.NotFound(w, r)

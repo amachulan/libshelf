@@ -18,9 +18,23 @@ type GenreRef struct {
 type NamedList struct {
 	ID     int64           `json:"id"`
 	Name   string          `json:"name"`
+	Code   string          `json:"code,omitempty"`
+	Sort   string          `json:"sort,omitempty"`
 	Books  []Book          `json:"books"`
 	Total  int             `json:"total"`
 	Series []CatalogSeries `json:"series,omitempty"`
+}
+
+// NormalizeListSort maps UI/API sort aliases. Empty and unknown → popular.
+func NormalizeListSort(sort string) string {
+	switch strings.ToLower(strings.TrimSpace(sort)) {
+	case "new", "added", "date":
+		return "new"
+	case "title", "alpha", "name":
+		return "title"
+	default:
+		return "popular"
+	}
 }
 
 // AuthorSeries returns series that contain this author's visible books.

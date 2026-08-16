@@ -25,6 +25,14 @@ const resultsSub = $("results-sub");
 
 const PAGE_SIZE = 60;
 const AUTHOR_CHIP_PREVIEW = 24;
+let genreSort = "popular";
+
+function normalizeGenreSort(sort) {
+  const s = String(sort || "").toLowerCase();
+  if (s === "new" || s === "added" || s === "date") return "new";
+  if (s === "title" || s === "alpha" || s === "name") return "title";
+  return "popular";
+}
 
 /** @typedef {{ q: string, title: string, author: string, yearFrom: string, yearTo: string, addedFrom: string, addedTo: string }} SearchParams */
 
@@ -519,6 +527,7 @@ function renderResults(search, books, total, page, authors) {
   resultsBack.classList.add("hidden");
   resultsSub.classList.remove("hidden");
   $("author-series").classList.add("hidden");
+  $("list-sort").classList.add("hidden");
   if (page <= 1) {
     renderSearchAuthors(authors);
   } else {
@@ -564,7 +573,20 @@ function renderAuthorSeries(series, authorId) {
   box.classList.remove("hidden");
 }
 
+function paintListSort() {
+  const box = $("list-sort");
+  if (listContext?.kind !== "genre") {
+    box.classList.add("hidden");
+    return;
+  }
+  box.classList.remove("hidden");
+  box.querySelectorAll("[data-sort]").forEach((btn) => {
+    btn.classList.toggle("is-active", btn.getAttribute("data-sort") === genreSort);
+  });
+}
+
 function renderNamedList(kind, data, page) {
+  if (kind === "genre" && data.sort) genreSort = normalizeGenreSort(data.sort);
   listContext = { kind, id: data.id, name: data.name, series: data.series || null };
   lastBooks = data.books || [];
   resultsPager = {
@@ -573,6 +595,7 @@ function renderNamedList(kind, data, page) {
     page: page || 1,
     total: data.total || lastBooks.length,
     limit: PAGE_SIZE,
+    sort: kind === "genre" ? genreSort : "",
   };
   resultsBack.classList.remove("hidden");
   resultsSub.classList.remove("hidden");
@@ -585,6 +608,7 @@ function renderNamedList(kind, data, page) {
   } else {
     $("author-series").classList.add("hidden");
   }
+  paintListSort();
   renderBookGrid(lastBooks);
   syncResultsPager();
   show("results");
@@ -668,12 +692,16 @@ async function openSeries(id, page) {
   window.scrollTo(0, 0);
 }
 
-function resultsURLFrom(mode, key, page) {
+function resultsURLFrom(mode, key, page, sort) {
   const p = page > 1 ? "&p=" + page : "";
   if (mode === "search") return searchPageURL(typeof key === "string" ? { ...emptySearch(), q: key } : key, page);
   if (mode === "author") return "/?author=" + key + p;
   if (mode === "series") return "/?series=" + key + p;
-  if (mode === "genre") return "/?genre=" + encodeURIComponent(key) + p;
+  if (mode === "genre") {
+    const s = normalizeGenreSort(sort || genreSort);
+    const sortQS = s !== "popular" ? "&sort=" + encodeURIComponent(s) : "";
+    return "/?genre=" + encodeURIComponent(key) + sortQS + p;
+  }
   return "/";
 }
 
@@ -686,7 +714,7 @@ async function goResultsPage(delta) {
   if (mode === "search") return doSearch(key, page);
   if (mode === "author") return openAuthor(key, page);
   if (mode === "series") return openSeries(key, page);
-  if (mode === "genre") return openGenre(key, page);
+  if (mode === "genre") return openGenre(key, page, resultsPager.sort);
 }
 
 function linkButton(text, onClick) {
@@ -1594,11 +1622,13 @@ function renderCatalogRows(items, kind) {
   }
 }
 
-async function openGenre(code, page) {
+async function openGenre(code, page, sort) {
   page = Math.max(1, page || 1);
+  if (sort) genreSort = normalizeGenreSort(sort);
   const offset = (page - 1) * PAGE_SIZE;
   const res = await api(
-    "/api/catalog/genres/" + encodeURIComponent(code) + "?limit=" + PAGE_SIZE + "&offset=" + offset
+    "/api/catalog/genres/" + encodeURIComponent(code) +
+      "?limit=" + PAGE_SIZE + "&offset=" + offset + "&sort=" + encodeURIComponent(genreSort)
   );
   if (!res.ok) {
     alert("Жанр недоступен");
@@ -1606,11 +1636,12 @@ async function openGenre(code, page) {
   }
   const data = await res.json();
   data.id = code;
+  data.sort = data.sort || genreSort;
   const pages = pageCount(data.total, PAGE_SIZE);
   if (page > pages && data.total > 0) {
-    return openGenre(code, pages);
+    return openGenre(code, pages, genreSort);
   }
-  history.pushState({ genre: code, p: page }, "", resultsURLFrom("genre", code, page));
+  history.pushState({ genre: code, p: page, sort: genreSort }, "", resultsURLFrom("genre", code, page, genreSort));
   renderNamedList("genre", data, page);
   window.scrollTo(0, 0);
 }
@@ -1773,8 +1804,8 @@ function goBackFromBook() {
     const { kind, id, name, series } = listContext;
     const page = resultsPager && resultsPager.mode === kind ? resultsPager.page : 1;
     const total = resultsPager ? resultsPager.total : lastBooks.length;
-    history.replaceState({ [kind]: id, p: page }, "", resultsURLFrom(kind, id, page));
-    renderNamedList(kind, { id, name, books: lastBooks, total, series }, page);
+    history.replaceState({ [kind]: id, p: page, sort: genreSort }, "", resultsURLFrom(kind, id, page, genreSort));
+    renderNamedList(kind, { id, name, books: lastBooks, total, series, sort: genreSort }, page);
     return;
   }
   if (searchHasFilters(lastSearch)) {
@@ -1851,6 +1882,15 @@ $("adv-search-clear").addEventListener("click", () => {
 
 $("pager-prev").addEventListener("click", () => goResultsPage(-1));
 $("pager-next").addEventListener("click", () => goResultsPage(1));
+
+document.querySelectorAll("#list-sort [data-sort]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (listContext?.kind !== "genre") return;
+    const next = normalizeGenreSort(btn.getAttribute("data-sort"));
+    if (next === genreSort) return;
+    openGenre(listContext.id, 1, next);
+  });
+});
 
 $("back").addEventListener("click", goBackFromBook);
 $("book-read").addEventListener("click", () => {
@@ -2121,7 +2161,7 @@ async function bootFromURL() {
     return;
   }
   if (genre && !book) {
-    await openGenre(genre, page);
+    await openGenre(genre, page, params.get("sort"));
     return;
   }
   if (author && !book) {

@@ -29,3 +29,21 @@ func TestLikeEscape(t *testing.T) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
+
+func TestNormalizeListSort(t *testing.T) {
+	cases := map[string]string{
+		"":        "popular",
+		"POPULAR": "popular",
+		"rate":    "popular",
+		"new":     "new",
+		"added":   "new",
+		"title":   "title",
+		"alpha":   "title",
+		"nope":    "popular",
+	}
+	for in, want := range cases {
+		if got := NormalizeListSort(in); got != want {
+			t.Fatalf("%q: got %q want %q", in, got, want)
+		}
+	}
+}
