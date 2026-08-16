@@ -14,6 +14,8 @@ const (
 	filterCandidateCap = 250_000
 	maxEditions        = 40
 	listGroupCap       = 5000
+	// Genre lists sort in SQL; need every edition so work totals stay stable.
+	genreGroupCap = 250_000
 )
 
 // EditionRef is one file/edition of a work (same title + authors).
@@ -66,9 +68,14 @@ func groupBooksToWorks(books []Book, authorIDs map[int64][]int64) []Book {
 		key := workKey(b.Title, authorIDs[b.ID])
 		if a, ok := byKey[key]; ok {
 			a.count++
+			bestRate := a.book.Rate
+			if b.Rate > bestRate {
+				bestRate = b.Rate
+			}
 			if betterEdition(b, a.book) {
 				a.book = b
 			}
+			a.book.Rate = bestRate
 			continue
 		}
 		byKey[key] = &acc{book: b, count: 1}

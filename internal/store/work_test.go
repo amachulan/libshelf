@@ -34,3 +34,21 @@ func TestGroupBooksToWorks(t *testing.T) {
 		t.Fatalf("second work: %+v", got[1])
 	}
 }
+
+func TestGroupBooksToWorksKeepsBestRate(t *testing.T) {
+	books := []Book{
+		{ID: 1, Title: "Оно", Size: 100, Rate: 4.8},
+		{ID: 2, Title: "Оно", Size: 300, Rate: 0},
+	}
+	auth := map[int64][]int64{1: {10}, 2: {10}}
+	got := groupBooksToWorks(books, auth)
+	if len(got) != 1 {
+		t.Fatalf("works=%d", len(got))
+	}
+	if got[0].ID != 2 {
+		t.Fatalf("want larger edition, got %+v", got[0])
+	}
+	if got[0].Rate != 4.8 {
+		t.Fatalf("rate=%v want 4.8", got[0].Rate)
+	}
+}

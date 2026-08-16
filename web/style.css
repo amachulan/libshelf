@@ -562,6 +562,14 @@ html.boot-reader body {
   overflow: hidden;
 }
 
+.card .card-rate {
+  margin: 0.35rem 0 0;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
 .book-card {
   display: grid;
   grid-template-columns: 220px 1fr;

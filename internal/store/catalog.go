@@ -532,7 +532,7 @@ func (s *Store) GenreBooks(code string, limit, offset int, sort string) (*NamedL
 		order = `b.title`
 	}
 	lang, langArgs := s.langPred("b.lang")
-	args := append([]any{genreID}, append(langArgs, listGroupCap)...)
+	args := append([]any{genreID}, append(langArgs, genreGroupCap)...)
 	rows, err := s.db.Query(`
 SELECT`+bookColumns+`
 FROM books b
