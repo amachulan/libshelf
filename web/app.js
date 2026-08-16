@@ -227,14 +227,46 @@ function coverSrc(url, id) {
   return `${url}?v=${id}`;
 }
 
-function placeholderCover() {
+function coverSeed(title, authors) {
+  const s = String(title || "") + "\0" + String(authors || "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function coverInitials(title, authors) {
+  const words = String(title || "")
+    .replace(/^[.\s«»"'…—–-]+/u, "")
+    .split(/\s+/)
+    .filter((w) => /[\p{L}\p{N}]/u.test(w));
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  if (words[0] && words[0].length >= 2) return words[0].slice(0, 2).toUpperCase();
+  if (words[0]) return words[0][0].toUpperCase();
+  const a = String(authors || "").trim();
+  return a ? a.slice(0, 2).toUpperCase() : "К";
+}
+
+function placeholderCover(title, authors) {
   const dark = document.documentElement.getAttribute("data-theme") === "dark";
-  const bg = dark ? "#2a3338" : "#e7dfd0";
-  const fg = dark ? "#9aa8a3" : "#8a8070";
+  const palettes = dark
+    ? ["#3d4f4a", "#3a4558", "#4a3f4a", "#4a4536", "#3d4a58", "#4a3d3d"]
+    : ["#c9d4c8", "#c5cdd8", "#d4c8d0", "#d6d0c0", "#c8d0d8", "#d4c8c4"];
+  const bands = dark
+    ? ["#2a3532", "#283040", "#352c35", "#353024", "#2a3440", "#352a2a"]
+    : ["#a8b6a6", "#a4aebc", "#b6a8b0", "#b8b09c", "#a8b0bc", "#b6a8a4"];
+  const ink = dark ? "#e8efe9" : "#2a2e2c";
+  const i = coverSeed(title, authors) % palettes.length;
+  const initials = coverInitials(title, authors);
   return "data:image/svg+xml," + encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300">
-      <rect width="100%" height="100%" fill="${bg}"/>
-      <text x="50%" y="50%" text-anchor="middle" fill="${fg}" font-family="sans-serif" font-size="18">нет обложки</text>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
+      <rect width="200" height="300" fill="${palettes[i]}"/>
+      <rect x="0" y="0" width="14" height="300" fill="${bands[i]}"/>
+      <rect x="28" y="36" width="148" height="3" fill="${ink}" fill-opacity="0.18"/>
+      <rect x="28" y="261" width="148" height="3" fill="${ink}" fill-opacity="0.18"/>
+      <text x="107" y="168" text-anchor="middle" fill="${ink}" fill-opacity="0.88"
+        font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="600">${initials}</text>
     </svg>`
   );
 }
@@ -302,7 +334,7 @@ function renderBookGrid(books, target = grid, emptyEl = empty) {
       el.appendChild(badge);
     }
     const img = el.querySelector("img");
-    img.onerror = () => { img.src = placeholderCover(); };
+    img.onerror = () => { img.src = placeholderCover(b.title, b.authors); };
     el.addEventListener("click", () => openBook(b.id));
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter") openBook(b.id);
@@ -934,7 +966,7 @@ async function openBook(id) {
 
   const cover = $("book-cover");
   cover.src = coverSrc(b.coverUrl, b.id);
-  cover.onerror = () => { cover.src = placeholderCover(); };
+  cover.onerror = () => { cover.src = placeholderCover(b.title, b.authors); };
   $("book-download").href = b.downloadUrl;
   updateReadButton(b.progress || 0);
   renderEditions(b);
