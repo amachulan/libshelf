@@ -296,7 +296,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			text = q.Q
 		}
 		if text != "" {
-			if authors, err := s.store.SearchAuthors(text, 24); err == nil && len(authors) > 0 {
+			if authors, err := s.store.SearchAuthors(text, 500); err == nil && len(authors) > 0 {
 				out["authors"] = authors
 			}
 		}

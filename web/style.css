@@ -632,6 +632,11 @@ html.boot-reader body {
   margin-left: 0.35rem;
 }
 
+.author-series-chip.author-series-more {
+  color: var(--muted);
+  border-style: dashed;
+}
+
 .results-sub {
   margin: -0.4rem 0 1rem;
   color: var(--muted);

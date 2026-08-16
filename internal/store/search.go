@@ -195,6 +195,7 @@ LIMIT ?`)
 // SearchAuthors returns authors whose name parts match all query tokens (any order).
 // Ranked by visible book count, then limited — unlike catalog prefix browse,
 // which pages alphabetically and must not pre-cut by popularity.
+// The search UI previews 24 chips and expands the rest from this list.
 func (s *Store) SearchAuthors(query string, limit int) ([]CatalogPerson, error) {
 	tokens := strings.Fields(foldYo(strings.TrimSpace(query)))
 	if len(tokens) == 0 {
@@ -203,8 +204,8 @@ func (s *Store) SearchAuthors(query string, limit int) ([]CatalogPerson, error) 
 	if limit <= 0 {
 		limit = 24
 	}
-	if limit > 40 {
-		limit = 40
+	if limit > 500 {
+		limit = 500
 	}
 
 	lang, langArgs := s.langPred("b.lang")

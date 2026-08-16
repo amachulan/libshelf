@@ -24,6 +24,7 @@ const resultsBack = $("results-back");
 const resultsSub = $("results-sub");
 
 const PAGE_SIZE = 60;
+const AUTHOR_CHIP_PREVIEW = 24;
 
 /** @typedef {{ q: string, title: string, author: string, yearFrom: string, yearTo: string, addedFrom: string, addedTo: string }} SearchParams */
 
@@ -428,35 +429,80 @@ function setAdvOpen(open) {
   advToggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
-function renderSearchAuthors(authors) {
+/** @type {{ id: number, name: string, books?: number }[]} */
+let searchAuthorsAll = [];
+let searchAuthorsExpanded = false;
+
+function appendAuthorChip(list, a) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "author-series-chip";
+  const name = document.createElement("span");
+  name.textContent = a.name || "Автор";
+  btn.appendChild(name);
+  if (a.books) {
+    const count = document.createElement("span");
+    count.className = "author-series-count";
+    count.textContent = formatNum(a.books);
+    btn.appendChild(count);
+  }
+  btn.addEventListener("click", () => {
+    listReturn = { type: "search" };
+    openAuthor(a.id);
+  });
+  list.appendChild(btn);
+}
+
+function paintSearchAuthors() {
   const box = $("search-authors");
   const list = $("search-authors-list");
+  const label = box.querySelector(".author-series-label");
   list.innerHTML = "";
-  const items = authors || [];
-  if (!items.length) {
+  const all = searchAuthorsAll;
+  if (!all.length) {
     box.classList.add("hidden");
     return;
   }
-  for (const a of items) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "author-series-chip";
-    const name = document.createElement("span");
-    name.textContent = a.name || "Автор";
-    btn.appendChild(name);
-    if (a.books) {
+  if (label) {
+    label.textContent = all.length > AUTHOR_CHIP_PREVIEW
+      ? `Авторы · ${formatNum(all.length)}`
+      : "Авторы";
+  }
+  const hidden = !searchAuthorsExpanded && all.length > AUTHOR_CHIP_PREVIEW;
+  const visible = hidden ? all.slice(0, AUTHOR_CHIP_PREVIEW) : all;
+  for (const a of visible) appendAuthorChip(list, a);
+  if (all.length > AUTHOR_CHIP_PREVIEW) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "author-series-chip author-series-more";
+    more.setAttribute("aria-expanded", searchAuthorsExpanded ? "true" : "false");
+    if (searchAuthorsExpanded) {
+      more.textContent = "Свернуть";
+    } else {
+      const rest = all.length - AUTHOR_CHIP_PREVIEW;
+      const name = document.createElement("span");
+      name.textContent = "…";
       const count = document.createElement("span");
       count.className = "author-series-count";
-      count.textContent = formatNum(a.books);
-      btn.appendChild(count);
+      count.textContent = formatNum(rest);
+      more.appendChild(name);
+      more.appendChild(count);
+      more.title = `Показать ещё ${formatNum(rest)}`;
+      more.setAttribute("aria-label", `Показать ещё ${formatNum(rest)} авторов`);
     }
-    btn.addEventListener("click", () => {
-      listReturn = { type: "search" };
-      openAuthor(a.id);
+    more.addEventListener("click", () => {
+      searchAuthorsExpanded = !searchAuthorsExpanded;
+      paintSearchAuthors();
     });
-    list.appendChild(btn);
+    list.appendChild(more);
   }
   box.classList.remove("hidden");
+}
+
+function renderSearchAuthors(authors) {
+  searchAuthorsAll = authors || [];
+  searchAuthorsExpanded = false;
+  paintSearchAuthors();
 }
 
 function renderResults(search, books, total, page, authors) {
