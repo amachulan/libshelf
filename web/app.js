@@ -191,6 +191,16 @@ function formatRate(n) {
   return Number.isInteger(v) ? String(v) : v.toFixed(1).replace(".", ",");
 }
 
+function formatFantLab(b) {
+  if (!b || !b.fantlabVoters || !b.fantlabRate) return "";
+  return formatRate(b.fantlabRate);
+}
+
+function fantlabTitle(b) {
+  if (!b || !b.fantlabVoters) return "";
+  return "FantLab, " + formatNum(b.fantlabVoters) + " оценок";
+}
+
 function formatSize(bytes) {
   if (!bytes) return "";
   if (bytes < 1024) return bytes + " B";
@@ -358,12 +368,12 @@ function renderBookGrid(books, target = grid, emptyEl = empty) {
     titleEl.title = b.title || "";
     authorsEl.textContent = shortAuthors(b.authors);
     authorsEl.title = b.authors || "";
-    const rateText = formatRate(b.rate);
+    const rateText = formatFantLab(b);
     if (rateText) {
       const rateEl = document.createElement("p");
       rateEl.className = "card-rate";
       rateEl.textContent = "★ " + rateText;
-      rateEl.title = "Оценка в каталоге";
+      rateEl.title = fantlabTitle(b);
       el.querySelector(".meta").appendChild(rateEl);
     }
     if (b.editionCount > 1) {
@@ -987,9 +997,10 @@ async function openBook(id) {
   if (b.year && !b.pubYear && !b.publisher && !b.city) bits.push(String(b.year));
   if (b.ext) bits.push(b.ext.toUpperCase());
   if (b.size) bits.push(formatSize(b.size));
-  const rateText = formatRate(b.rate);
+  const rateText = formatFantLab(b);
   if (rateText) bits.push("★ " + rateText);
   $("book-info").textContent = bits.join(" · ");
+  $("book-info").title = fantlabTitle(b);
 
   const genres = (b.genreList || []).map((g) => g.name || g.code).filter(Boolean);
   $("book-genres").textContent = genres.length ? genres.join(" · ") : "";

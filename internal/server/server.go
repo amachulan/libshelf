@@ -275,7 +275,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	decorateBooks(books)
+	s.decorateBooks(books)
 	out := map[string]any{
 		"query":     q.Q,
 		"author":    q.Author,
@@ -502,7 +502,7 @@ func (s *Server) handleAuthor(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	decorateBooks(list.Books)
+	s.decorateBooks(list.Books)
 	writeJSON(w, list)
 }
 
@@ -523,14 +523,17 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	decorateBooks(list.Books)
+	s.decorateBooks(list.Books)
 	writeJSON(w, list)
 }
 
-func decorateBooks(books []store.Book) {
+func (s *Server) decorateBooks(books []store.Book) {
 	for i := range books {
 		books[i].CoverURL = "/cover/" + strconv.FormatInt(books[i].ID, 10)
 		books[i].DownloadURL = "/download/" + strconv.FormatInt(books[i].ID, 10)
+	}
+	if err := s.store.AttachFantLab(books); err != nil {
+		log.Printf("fantlab attach: %v", err)
 	}
 }
 

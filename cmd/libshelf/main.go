@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -13,6 +15,7 @@ import (
 
 	"libshelf/internal/appconfig"
 	"libshelf/internal/auth"
+	"libshelf/internal/fantlab"
 	"libshelf/internal/inpx"
 	"libshelf/internal/server"
 	"libshelf/internal/store"
@@ -36,6 +39,8 @@ func main() {
 		runServe(os.Args[2:])
 	case "user":
 		runUser(os.Args[2:])
+	case "fantlab-fetch":
+		runFantLabFetch(os.Args[2:])
 	case "version", "-version", "--version":
 		fmt.Println(version.Commit)
 	case "help", "-h", "--help":
@@ -57,6 +62,7 @@ Usage:
   libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db DIR/FILE) [options]
   libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--lang CODE] [--open]
   libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
+  libshelf fantlab-fetch   --data-dir DIR [--genre CODE] [--limit N] [--delay 1s] [--retry-failed]
   libshelf version
 
 Dedupe example (old library stays untouched; clean a newly obtained dump):
@@ -444,4 +450,59 @@ func runUser(args []string) {
 		log.Fatal(err)
 	}
 	log.Printf("created user %q role=%s id=%d", u.Username, u.Role, u.ID)
+}
+
+func runFantLabFetch(args []string) {
+	fs := flag.NewFlagSet("fantlab-fetch", flag.ExitOnError)
+	configPath := fs.String("config", "", "path to libshelf.json (optional; sets data-dir and languages)")
+	dataDir := fs.String("data-dir", "", "directory with libshelf.db")
+	genre := fs.String("genre", "", "only this INPX genre code (e.g. detective)")
+	limit := fs.Int("limit", 0, "max works this run (0 = all pending)")
+	delay := fs.Duration("delay", time.Second, "pause between FantLab requests")
+	retry := fs.Bool("retry-failed", false, "refetch none/ambiguous matches")
+	_ = fs.Parse(args)
+
+	var langs []string
+	if *configPath != "" {
+		cfg, err := appconfig.Load(*configPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if *dataDir == "" {
+			*dataDir = cfg.DataDir
+		}
+		langs = cfg.StoreLanguages()
+	}
+	if *dataDir == "" {
+		fs.Usage()
+		os.Exit(2)
+	}
+	dbPath := filepath.Join(*dataDir, "libshelf.db")
+	st, err := store.Open(dbPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer st.Close()
+	if len(langs) > 0 {
+		st.SetLanguages(langs)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	log.Printf("fantlab-fetch: db=%s genre=%q limit=%d delay=%s", dbPath, *genre, *limit, *delay)
+	stats, err := fantlab.Fetch(ctx, st, fantlab.Options{
+		Delay:       *delay,
+		Limit:       *limit,
+		Genre:       strings.TrimSpace(*genre),
+		RetryFailed: *retry,
+	})
+	if err != nil && !errorsIsCancel(err) {
+		log.Fatal(err)
+	}
+	log.Printf("fantlab-fetch done: %s", fantlab.FormatStats(stats))
+}
+
+func errorsIsCancel(err error) bool {
+	return err == context.Canceled || err == context.DeadlineExceeded
 }

@@ -12,30 +12,27 @@ func TestPopularTitleKeyOrder(t *testing.T) {
 	}
 }
 
-func TestPopularScorePrefersEvidence(t *testing.T) {
-	if popularScore(5, 1) >= popularScore(5, 5) {
-		t.Fatal("more editions should outrank a lone 5.0")
+func TestFantlabScoreNeedsVotes(t *testing.T) {
+	if fantlabScore(10, 1) >= fantlabScore(8.5, 2000) {
+		t.Fatal("a well-voted 8.5 should beat a lone 10")
 	}
-	if popularScore(5, 1) >= popularScore(4.8, 8) {
-		t.Fatal("a well-copied 4.8 should beat a lone 5.0")
+	if fantlabScore(8.64, 10528) <= fantlabScore(3.9, 11) {
+		t.Fatal("Hyperion-scale should beat a weakly voted 3.9")
+	}
+	if fantlabScore(0, 0) != 0 {
+		t.Fatal("unmatched should score 0")
 	}
 }
 
-func TestSortWorksPopular(t *testing.T) {
+func TestSortWorksPopularFantLab(t *testing.T) {
 	works := []Book{
-		{ID: 1, Title: "Crime story № 1", Rate: 5, EditionCount: 1},
-		{ID: 2, Title: `"Лучшее из лучшего"`, Rate: 5, EditionCount: 1},
-		{ID: 3, Title: "Известная", Rate: 5, EditionCount: 6},
-		{ID: 4, Title: "Корона Кобры", Rate: 5, EditionCount: 1},
+		{ID: 1, Title: "Без матча", Rate: 5},
+		{ID: 2, Title: "Донцова", FantLabRate: 3.9, FantLabVoters: 11},
+		{ID: 3, Title: "Гиперион", FantLabRate: 8.64, FantLabVoters: 10528},
+		{ID: 4, Title: "Средняя", FantLabRate: 8.0, FantLabVoters: 50},
 	}
 	sortWorksPopular(works)
-	if works[0].ID != 3 {
-		t.Fatalf("want multi-edition first, got %+v", works[0])
-	}
-	if works[1].ID != 4 || works[2].ID != 2 {
-		t.Fatalf("cyrillic singles: %+v %+v", works[1], works[2])
-	}
-	if works[3].ID != 1 {
-		t.Fatalf("latin should be last among singles, got %+v", works[3])
+	if works[0].ID != 3 || works[1].ID != 4 || works[2].ID != 2 || works[3].ID != 1 {
+		t.Fatalf("order: %+v %+v %+v %+v", works[0], works[1], works[2], works[3])
 	}
 }

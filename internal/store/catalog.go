@@ -553,6 +553,9 @@ LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
+	if err := s.AttachFantLab(works); err != nil {
+		return nil, err
+	}
 	if sort == "popular" {
 		sortWorksPopular(works)
 	}

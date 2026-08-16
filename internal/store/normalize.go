@@ -24,6 +24,16 @@ func foldYo(s string) string {
 	}, s)
 }
 
+// FoldTitle is the comparison form for titles (decor stripped, ё→е, lower).
+func FoldTitle(s string) string {
+	return normalizeTitle(trimTitleDecor(s))
+}
+
+// FoldName lowercases and folds ё for author last-name matching.
+func FoldName(s string) string {
+	return normalizeTitle(s)
+}
+
 // normalizeTitle folds ё/е, lowercases, trims trailing ellipsis/dots, collapses spaces.
 func normalizeTitle(s string) string {
 	s = foldYo(strings.TrimSpace(s))

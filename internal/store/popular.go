@@ -7,23 +7,6 @@ import (
 	"unicode/utf8"
 )
 
-// INPX has LIBRATES (0–5) and no vote counts, so a raw 5.0 dump is just
-// alphabet soup: quotes, ellipses, "Crime story № 1". Treat edition count as
-// a stand-in for votes (more files ≈ more circulation) and break remaining
-// ties with a title key that prefers Cyrillic over Latin/digits/junk.
-const (
-	popularPriorStrength = 4.0
-	popularPriorMean     = 3.5
-)
-
-func popularScore(rate float64, editions int) float64 {
-	if editions < 1 {
-		editions = 1
-	}
-	v := float64(editions)
-	return (rate*v + popularPriorStrength*popularPriorMean) / (v + popularPriorStrength)
-}
-
 func trimTitleDecor(s string) string {
 	return strings.TrimLeftFunc(s, func(r rune) bool {
 		if unicode.IsSpace(r) {
@@ -63,12 +46,29 @@ func popularTitleKey(title string) string {
 	return string(bucket) + "|" + s
 }
 
+// FantLab ratings are ~1–10. A lone 10.0 must not beat a well-voted 8.5.
+const (
+	fantlabPriorStrength = 20.0
+	fantlabPriorMean     = 7.0
+)
+
+func fantlabScore(rate float64, voters int) float64 {
+	if voters <= 0 || rate <= 0 {
+		return 0
+	}
+	v := float64(voters)
+	return (rate*v + fantlabPriorStrength*fantlabPriorMean) / (v + fantlabPriorStrength)
+}
+
 func sortWorksPopular(works []Book) {
 	sort.SliceStable(works, func(i, j int) bool {
-		si := popularScore(works[i].Rate, works[i].EditionCount)
-		sj := popularScore(works[j].Rate, works[j].EditionCount)
+		si := fantlabScore(works[i].FantLabRate, works[i].FantLabVoters)
+		sj := fantlabScore(works[j].FantLabRate, works[j].FantLabVoters)
 		if si != sj {
 			return si > sj
+		}
+		if works[i].FantLabVoters != works[j].FantLabVoters {
+			return works[i].FantLabVoters > works[j].FantLabVoters
 		}
 		ki, kj := popularTitleKey(works[i].Title), popularTitleKey(works[j].Title)
 		if ki != kj {

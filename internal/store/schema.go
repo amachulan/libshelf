@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS book_genres (
   PRIMARY KEY (book_id, genre_id)
 );
 
+CREATE TABLE IF NOT EXISTS fantlab_ratings (
+  work_key       TEXT PRIMARY KEY,
+  status         TEXT NOT NULL,
+  fantlab_id     INTEGER NOT NULL DEFAULT 0,
+  rating         REAL NOT NULL DEFAULT 0,
+  voters         INTEGER NOT NULL DEFAULT 0,
+  matched_title  TEXT NOT NULL DEFAULT '',
+  fetched_at     TEXT NOT NULL DEFAULT ''
+);
+
 ` + bookSearchDDL + `;
 `
 

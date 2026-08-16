@@ -105,7 +105,7 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		list.Name = genres.Name(code)
-		decorateBooks(list.Books)
+		s.decorateBooks(list.Books)
 		writeJSON(w, list)
 	default:
 		http.NotFound(w, r)

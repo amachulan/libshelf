@@ -103,7 +103,7 @@ func (s *Server) listShelf(w http.ResponseWriter, r *http.Request, u *auth.User,
 		httpError(w, err, 500)
 		return
 	}
-	decorateBooks(books)
+	s.decorateBooks(books)
 	byID := make(map[int64]any, len(books))
 	for i := range books {
 		byID[books[i].ID] = books[i]

@@ -56,6 +56,11 @@ func (s *Store) EnsureSearchIndexAsync() {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+func (s *Store) Exec(query string, args ...any) error {
+	_, err := s.db.Exec(query, args...)
+	return err
+}
+
 func (s *Store) BookCount() (int, error) {
 	q := `SELECT count(*) FROM books WHERE deleted = 0`
 	lang, args := s.langPred("lang")
@@ -71,19 +76,21 @@ func (s *Store) TotalBookCount() (int, error) {
 }
 
 type Book struct {
-	ID           int64   `json:"id"`
-	Title        string  `json:"title"`
-	Authors      string  `json:"authors"`
-	Series       string  `json:"series"`
-	SeriesNum    int     `json:"seriesNum"`
-	Year         int     `json:"year"`
-	Ext          string  `json:"ext"`
-	Size         int64   `json:"size"`
-	Lang         string  `json:"lang"`
-	Rate         float64 `json:"rate"`
-	CoverURL     string  `json:"coverUrl"`
-	DownloadURL  string  `json:"downloadUrl"`
-	EditionCount int     `json:"editionCount,omitempty"`
+	ID            int64   `json:"id"`
+	Title         string  `json:"title"`
+	Authors       string  `json:"authors"`
+	Series        string  `json:"series"`
+	SeriesNum     int     `json:"seriesNum"`
+	Year          int     `json:"year"`
+	Ext           string  `json:"ext"`
+	Size          int64   `json:"size"`
+	Lang          string  `json:"lang"`
+	Rate          float64 `json:"rate"`
+	CoverURL      string  `json:"coverUrl"`
+	DownloadURL   string  `json:"downloadUrl"`
+	EditionCount  int     `json:"editionCount,omitempty"`
+	FantLabRate   float64 `json:"fantlabRate,omitempty"`
+	FantLabVoters int     `json:"fantlabVoters,omitempty"`
 }
 
 type BookDetails struct {
@@ -175,6 +182,12 @@ ORDER BY a.last_name, a.first_name`, id)
 	if err := arows.Err(); err != nil {
 		return nil, err
 	}
+
+	one := []Book{d.Book}
+	if err := s.AttachFantLab(one); err != nil {
+		return nil, err
+	}
+	d.Book = one[0]
 
 	rows, err := s.db.Query(`
 SELECT g.code FROM book_genres bg
