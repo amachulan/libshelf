@@ -201,6 +201,12 @@ function fantlabTitle(b) {
   return "FantLab, " + formatNum(b.fantlabVoters) + " оценок";
 }
 
+function formatProgress(p) {
+  const v = Number(p);
+  if (!v || v <= 0.01) return "";
+  return Math.min(100, Math.round(v * 100)) + "%";
+}
+
 function formatSize(bytes) {
   if (!bytes) return "";
   if (bytes < 1024) return bytes + " B";
@@ -369,12 +375,25 @@ function renderBookGrid(books, target = grid, emptyEl = empty) {
     authorsEl.textContent = shortAuthors(b.authors);
     authorsEl.title = b.authors || "";
     const rateText = formatFantLab(b);
-    if (rateText) {
-      const rateEl = document.createElement("p");
-      rateEl.className = "card-rate";
-      rateEl.textContent = "★ " + rateText;
-      rateEl.title = fantlabTitle(b);
-      el.querySelector(".meta").appendChild(rateEl);
+    const progText = formatProgress(b.progress);
+    if (rateText || progText) {
+      const row = document.createElement("p");
+      row.className = "card-rate";
+      if (rateText) {
+        const star = document.createElement("span");
+        star.textContent = "★ " + rateText;
+        star.title = fantlabTitle(b);
+        row.appendChild(star);
+      }
+      if (progText) {
+        if (rateText) row.appendChild(document.createTextNode(" · "));
+        const pr = document.createElement("span");
+        pr.className = "card-progress";
+        pr.textContent = progText;
+        pr.title = "Прочитано";
+        row.appendChild(pr);
+      }
+      el.querySelector(".meta").appendChild(row);
     }
     if (b.editionCount > 1) {
       const badge = document.createElement("span");

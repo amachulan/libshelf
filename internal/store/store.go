@@ -102,6 +102,7 @@ type Book struct {
 	EditionCount  int     `json:"editionCount,omitempty"`
 	FantLabRate   float64 `json:"fantlabRate,omitempty"`
 	FantLabVoters int     `json:"fantlabVoters,omitempty"`
+	Progress      float64 `json:"progress,omitempty"`
 }
 
 type BookDetails struct {
@@ -117,7 +118,6 @@ type BookDetails struct {
 	PubYear     string       `json:"pubYear,omitempty"`
 	ISBN        string       `json:"isbn,omitempty"`
 	ShelfStatus string       `json:"shelfStatus,omitempty"`
-	Progress    float64      `json:"progress,omitempty"`
 	File        string       `json:"file"`
 	Folder      string       `json:"folder"`
 	Editions    []EditionRef `json:"editions,omitempty"`

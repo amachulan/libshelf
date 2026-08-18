@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"libshelf/internal/auth"
+	"libshelf/internal/store"
 )
 
 func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) *auth.User {
@@ -104,18 +105,22 @@ func (s *Server) listShelf(w http.ResponseWriter, r *http.Request, u *auth.User,
 		return
 	}
 	s.decorateBooks(books)
-	byID := make(map[int64]any, len(books))
-	for i := range books {
-		byID[books[i].ID] = books[i]
-	}
 	out := make([]map[string]any, 0, len(items))
 	for _, it := range items {
-		b, ok := byID[it.BookID]
-		if !ok {
+		var found *store.Book
+		for i := range books {
+			if books[i].ID == it.BookID {
+				b := books[i]
+				b.Progress = it.Progress
+				found = &b
+				break
+			}
+		}
+		if found == nil {
 			continue
 		}
 		out = append(out, map[string]any{
-			"book":     b,
+			"book":     found,
 			"status":   it.Status,
 			"progress": it.Progress,
 		})

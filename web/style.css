@@ -570,6 +570,11 @@ html.boot-reader body {
   letter-spacing: 0.01em;
 }
 
+.card .card-progress {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .book-card {
   display: grid;
   grid-template-columns: 220px 1fr;
