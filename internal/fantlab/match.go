@@ -62,8 +62,34 @@ func PickMatch(title string, authorLasts []string, hits []Hit) Match {
 	case 1:
 		return Match{Status: statusOK, Hit: good[0]}
 	default:
+		if hit, ok := pickNonCycle(good); ok {
+			return Match{Status: statusOK, Hit: hit}
+		}
 		return Match{Status: statusAmbiguous}
 	}
+}
+
+func isCycle(h Hit) bool {
+	if strings.EqualFold(h.NameEng, "cycle") {
+		return true
+	}
+	if h.NameShow == "цикл" {
+		return true
+	}
+	return h.WorkType == 4
+}
+
+func pickNonCycle(hits []Hit) (Hit, bool) {
+	var books []Hit
+	for _, h := range hits {
+		if !isCycle(h) {
+			books = append(books, h)
+		}
+	}
+	if len(books) == 1 {
+		return books[0], true
+	}
+	return Hit{}, false
 }
 
 func titleMatches(want string, h Hit) bool {

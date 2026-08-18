@@ -57,7 +57,20 @@ ON CONFLICT(work_key) DO UPDATE SET
 }
 
 func (s *Store) ClearFailedFantLab() (int64, error) {
-	res, err := s.db.Exec(`DELETE FROM fantlab_ratings WHERE status IN (?, ?)`, FantLabNone, FantLabAmbiguous)
+	return s.ClearFantLabStatus(FantLabNone, FantLabAmbiguous)
+}
+
+func (s *Store) ClearFantLabStatus(statuses ...string) (int64, error) {
+	if len(statuses) == 0 {
+		return 0, nil
+	}
+	ph := make([]string, len(statuses))
+	args := make([]any, len(statuses))
+	for i, st := range statuses {
+		ph[i] = "?"
+		args[i] = st
+	}
+	res, err := s.db.Exec(`DELETE FROM fantlab_ratings WHERE status IN (`+strings.Join(ph, ",")+`)`, args...)
 	if err != nil {
 		return 0, err
 	}

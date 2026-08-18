@@ -26,6 +26,17 @@ func TestPickMatchRejectsWrongAuthor(t *testing.T) {
 	}
 }
 
+func TestPickMatchPrefersBookOverCycle(t *testing.T) {
+	hits := []Hit{
+		{WorkID: 1379931, RusName: "Заступа", Authors: []string{"Иван Белов"}, NameEng: "cycle", NameShow: "цикл", WorkType: 4},
+		{WorkID: 1690165, RusName: "Заступа", Authors: []string{"Иван Белов"}, NameEng: "collection", NameShow: "сборник", WorkType: 3, Midmark: 8.23, MarkCount: 422},
+	}
+	m := PickMatch("Заступа", []string{"Белов"}, hits)
+	if m.Status != statusOK || m.Hit.WorkID != 1690165 {
+		t.Fatalf("want collection 1690165, got %+v", m)
+	}
+}
+
 func TestPickMatchAmbiguous(t *testing.T) {
 	hits := []Hit{
 		{WorkID: 1, RusName: "Оно", Authors: []string{"Стивен Кинг"}},

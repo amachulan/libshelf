@@ -62,7 +62,7 @@ Usage:
   libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db DIR/FILE) [options]
   libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--lang CODE] [--open]
   libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
-  libshelf fantlab-fetch   --data-dir DIR [--genre CODE] [--limit N] [--delay 1s] [--retry-failed]
+  libshelf fantlab-fetch   --data-dir DIR [--genre CODE] [--limit N] [--delay 1s] [--retry-failed|--retry-ambiguous]
   libshelf version
 
 Dedupe example (old library stays untouched; clean a newly obtained dump):
@@ -460,6 +460,7 @@ func runFantLabFetch(args []string) {
 	limit := fs.Int("limit", 0, "max works this run (0 = all pending)")
 	delay := fs.Duration("delay", time.Second, "pause between FantLab requests")
 	retry := fs.Bool("retry-failed", false, "refetch none/ambiguous matches")
+	retryAmb := fs.Bool("retry-ambiguous", false, "refetch only ambiguous matches")
 	_ = fs.Parse(args)
 
 	var langs []string
@@ -492,10 +493,11 @@ func runFantLabFetch(args []string) {
 
 	log.Printf("fantlab-fetch: db=%s genre=%q limit=%d delay=%s", dbPath, *genre, *limit, *delay)
 	stats, err := fantlab.Fetch(ctx, st, fantlab.Options{
-		Delay:       *delay,
-		Limit:       *limit,
-		Genre:       strings.TrimSpace(*genre),
-		RetryFailed: *retry,
+		Delay:          *delay,
+		Limit:          *limit,
+		Genre:          strings.TrimSpace(*genre),
+		RetryFailed:    *retry,
+		RetryAmbiguous: *retryAmb,
 	})
 	if err != nil && !errorsIsCancel(err) {
 		log.Fatal(err)

@@ -10,13 +10,14 @@ import (
 )
 
 type Options struct {
-	Delay       time.Duration
-	Limit       int
-	Genre       string
-	RetryFailed bool
-	UserAgent   string
-	BaseURL     string
-	Searcher    Searcher
+	Delay          time.Duration
+	Limit          int
+	Genre          string
+	RetryFailed    bool
+	RetryAmbiguous bool
+	UserAgent      string
+	BaseURL        string
+	Searcher       Searcher
 }
 
 type Searcher interface {
@@ -32,13 +33,19 @@ type Stats struct {
 }
 
 func Fetch(ctx context.Context, st *store.Store, opts Options) (Stats, error) {
-	if opts.RetryFailed {
-		n, err := st.ClearFailedFantLab()
+	if opts.RetryFailed || opts.RetryAmbiguous {
+		var n int64
+		var err error
+		if opts.RetryFailed {
+			n, err = st.ClearFailedFantLab()
+		} else {
+			n, err = st.ClearFantLabStatus(store.FantLabAmbiguous)
+		}
 		if err != nil {
 			return Stats{}, err
 		}
 		if n > 0 {
-			log.Printf("fantlab: cleared %d failed rows for retry", n)
+			log.Printf("fantlab: cleared %d rows for retry", n)
 		}
 	}
 	works, err := st.PendingFantLabWorks(opts.Genre, opts.Limit)

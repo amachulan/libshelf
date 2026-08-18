@@ -28,6 +28,9 @@ type Hit struct {
 	Authors   []string
 	Midmark   float64
 	MarkCount int
+	NameEng   string
+	NameShow  string
+	WorkType  int
 }
 
 type flexFloat float64
@@ -88,6 +91,9 @@ type searchHit struct {
 	AllAutorRus   string    `json:"all_autor_rusname"`
 	Midmark       flexFloat `json:"midmark"`
 	MarkCount     int       `json:"markcount"`
+	NameEng       string    `json:"name_eng"`
+	NameShowIm    string    `json:"name_show_im"`
+	WorkTypeID    int       `json:"work_type_id"`
 }
 
 func (c *Client) SearchWorks(ctx context.Context, query string) ([]Hit, error) {
@@ -165,6 +171,9 @@ func (c *Client) SearchWorks(ctx context.Context, query string) ([]Hit, error) {
 			Authors:   authors,
 			Midmark:   float64(h.Midmark),
 			MarkCount: h.MarkCount,
+			NameEng:   h.NameEng,
+			NameShow:  h.NameShowIm,
+			WorkType:  h.WorkTypeID,
 		})
 	}
 	return out, nil
