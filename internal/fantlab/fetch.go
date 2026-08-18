@@ -53,6 +53,7 @@ func Fetch(ctx context.Context, st *store.Store, opts Options) (Stats, error) {
 	if delay <= 0 {
 		delay = time.Second
 	}
+	defer st.InvalidateCatalogCache()
 	var stats Stats
 	for i, w := range works {
 		if err := ctx.Err(); err != nil {

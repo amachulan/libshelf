@@ -10,9 +10,10 @@ import (
 )
 
 type Store struct {
-	db       *sql.DB
-	langs    []string // empty = all languages; default ["ru"]
-	catCache catalogCache
+	db         *sql.DB
+	langs      []string // empty = all languages; default ["ru"]
+	catCache   catalogCache
+	genreCache genreListCache
 }
 
 func Open(path string) (*Store, error) {
@@ -42,6 +43,16 @@ func (s *Store) invalidateCatalogCache() {
 	s.catCache.seriesLetters = nil
 	s.catCache.genres = nil
 	s.catCache.mu.Unlock()
+
+	s.genreCache.mu.Lock()
+	s.genreCache.gen++
+	s.genreCache.lists = nil
+	s.genreCache.mu.Unlock()
+}
+
+// InvalidateCatalogCache drops in-memory catalog indexes and genre work lists.
+func (s *Store) InvalidateCatalogCache() {
+	s.invalidateCatalogCache()
 }
 
 // EnsureSearchIndexAsync rebuilds the FTS index in the background so serve can

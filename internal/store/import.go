@@ -123,6 +123,7 @@ func (s *Store) ImportCatalog(opts ImportOptions) (ImportStats, error) {
 	if lastName != "" {
 		_, _ = s.db.Exec(`INSERT OR REPLACE INTO meta(key, value) VALUES('collection', ?)`, lastName)
 	}
+	s.invalidateCatalogCache()
 	return stats, nil
 }
 

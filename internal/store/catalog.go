@@ -524,42 +524,15 @@ func (s *Store) GenreBooks(code string, limit, offset int, sort string) (*NamedL
 	if err != nil {
 		return nil, err
 	}
-	order := `b.lib_rate DESC, b.title`
-	switch sort {
-	case "new":
-		order = `b.added DESC, coalesce(b.year, 0) DESC, b.title`
-	case "title":
-		order = `b.title`
-	}
-	lang, langArgs := s.langPred("b.lang")
-	args := append([]any{genreID}, append(langArgs, genreGroupCap)...)
-	rows, err := s.db.Query(`
-SELECT`+bookColumns+`
-FROM books b
-LEFT JOIN series s ON s.id = b.series_id
-JOIN book_genres bg ON bg.book_id = b.id AND bg.genre_id = ?
-WHERE b.deleted = 0`+lang+`
-ORDER BY `+order+`
-LIMIT ?`, args...)
+	refs, err := s.cachedGenreWorks(genreID, sort)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	books, err := scanBooks(rows)
+	pageRefs, total := paginateGenreRefs(refs, limit, offset)
+	page, err := s.booksFromGenreRefs(pageRefs)
 	if err != nil {
 		return nil, err
 	}
-	works, err := s.groupWorks(books)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.AttachFantLab(works); err != nil {
-		return nil, err
-	}
-	if sort == "popular" {
-		sortWorksPopular(works)
-	}
-	page, total := paginateBooks(works, limit, offset)
 	return &NamedList{ID: genreID, Name: code, Code: code, Sort: sort, Books: page, Total: total}, nil
 }
 
