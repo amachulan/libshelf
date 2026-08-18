@@ -1,58 +1,139 @@
-# libshelf
+# LibShelf
 
-Self-hosted веб-каталог личной библиотеки: индекс **`.inpx`** + архивы **FB2**.
+Веб-каталог для уже существующей личной библиотеки FB2.
 
-Один статический бинарник на Go, SQLite + FTS5, встроенный UI. Подходит для домашнего сервера, NAS или VPS: импортируете каталог MyHomeLib/INPX, указываете папку с архивами и поднимаете HTTP.
+Если у вас уже есть коллекция MyHomeLib — файл каталога `.inpx` и рядом архивы книг — LibShelf индексирует этот каталог и открывает его в браузере. Книги остаются в своих zip/7z: их не нужно переносить, конвертировать или складывать в отдельную «базу книг».
 
-## Возможности
+LibShelf для тех, у кого большая FB2-библиотека, и кто хочет искать и читать её в браузере, не отказываясь от существующей раскладки файлов. Это один статический бинарник: его можно запустить на домашнем ПК, NAS или VPS.
 
-- поиск по **автору, названию и серии** сразу; в выдаче сверху — подходящие **авторы**; расширенный — автор, **год издания** и **год добавления**; у автора — список **серий**; **ё/е** и порядок имени не мешают; выдача по релевантности, с **пагинацией**
-- одинаковые книги с разными файлами схлопываются в одно **произведение**, на карточке — выбор **издания / перевода**
-- языки каталога задаёт **админ** (по умолчанию `ru`; можно несколько или все)
-- карточка книги, обложка из FB2, скачивание FB2
-- **читалка** FB2 в браузере: страницы (свайп вбок или вниз) или лента, гарнитура (sans/serif), выравнивание, полноэкран, прогресс
-- личные списки **Читаю / Прочитано / Хочу**
-- **каталог**: авторы и серии по буквам, жанры
-- несколько корней архивов, **dedupe** и дозагрузка нового `.inpx` без копирования всей коллекции
-- запуск на **Windows** мастером настройки (двойной щелчок)
-- **OPDS** для ридеров (`/opds`)
-- вход с ролями **читатель** / **админ** (можно отключить)
+## Зачем он нужен, если файлы уже есть
 
-## Что нужно
+`.inpx` — это каталог MyHomeLib: авторы, названия, серии, жанры и указание, в каком архиве лежит файл. Сами книги обычно лежат пачками в zip или 7z.
 
-1. Файл каталога `.inpx` (формат MyHomeLib / совместимые сборки).
-2. Каталог с архивами книг, на которые ссылается этот `.inpx` (`--library-dir`).
-3. Каталог данных для SQLite и кэша обложек (`--data-dir`).
+С таким набором уже можно пользоваться MyHomeLib. LibShelf не заменяет дамп и не просит новую раскладку файлов. Он читает тот же `.inpx`, строит поисковый индекс и по запросу достаёт FB2 из существующего архива: для карточки, обложки, скачивания, чтения в браузере или OPDS.
 
-Пути ниже — примеры; подставьте свои.
+После индексации в `--data-dir` появляется SQLite-база каталога и кэш обложек. Это служебные данные LibShelf, не копия библиотеки. Исходные архивы программа не переписывает.
 
-## Windows (удобный запуск)
+## Что умеет
+
+- поиск по автору, названию и серии; в выдаче сверху — подходящие авторы; в расширенном поиске — отдельно автор, год издания и год добавления в каталог; «ё/е» и порядок «Имя Фамилия» / «Фамилия Имя» не мешают; выдача постраничная
+- одинаковые книги с разными файлами собираются в одно произведение, на карточке можно выбрать издание или перевод
+- каталог: авторы и серии по буквам, жанры (сортировка «Популярные», «Новинки», «По алфавиту»); на странице автора — список его серий
+- карточка книги: обложка из FB2 (если в файле её нет — заглушка с названием), аннотация, скачивание FB2
+- читалка FB2 в браузере: страницы (свайп вбок или вниз) или лента, гарнитура, выравнивание, размер шрифта, полный экран, прогресс
+- при входе с аккаунтом: списки «Читаю / Прочитано / Хочу», блок «Продолжить чтение» на главной, процент на карточках
+- языки каталога задаёт администратор (по умолчанию русский; можно несколько языков или все)
+- OPDS по адресу `/opds` — каталог, поиск, авторы, серии, жанры, скачивание FB2
+- несколько папок с архивами; можно дописать новый `.inpx`, не копируя старую коллекцию
+- вход с ролями читатель / админ или режим без пароля
+
+Рейтинги FantLab на карточках и сортировка жанра «Популярные» по ним — отдельный необязательный шаг, см. [ниже](#рейтинги-fantlab). Для первого запуска это не нужно.
+
+## Как этим пользоваться
+
+Типичный случай: на диске уже лежит коллекция.
+
+1. Берёте тот же `.inpx`, которым пользуетесь в MyHomeLib, и ту же папку архивов FB2.
+2. Запускаете LibShelf и указываете эти пути. Импорт читает каталог в SQLite; файлы книг остаются на месте.
+3. Открываете библиотеку в браузере: поиск, авторы, серии, жанры, карточки.
+4. Читаете в браузере или скачиваете FB2. Если включён вход — отмечаете книги и продолжаете с того места, где остановились.
+5. Если нужен ридер на телефоне или электронной книге — подключаете OPDS.
+
+```text
+FB2-архивы + INPX-каталог
+            ↓
+         LibShelf
+            ↓
+    веб-каталог в браузере
+            ↓
+  поиск / серии / авторы / жанры
+  чтение / полки / статусы
+            ↓
+           OPDS
+```
+
+<!-- Screenshot: home and search results -->
+<!-- Screenshot: book page with editions and cover -->
+<!-- Screenshot: in-browser FB2 reader -->
+<!-- Screenshot: catalog by genre -->
+
+## Быстрый старт
+
+Самый короткий путь — готовый бинарник с [Releases / latest](https://github.com/amachulan/libshelf/releases/tag/latest). Собирать из исходников для первой пробы не нужно.
+
+### Windows
 
 1. Скачайте [`libshelf-windows-amd64.exe`](https://github.com/amachulan/libshelf/releases/download/latest/libshelf-windows-amd64.exe).
-2. Положите exe куда удобно (можно рядом с книгами) и **запустите двойным щелчком**.
-3. Откроется браузер с мастером настройки:
-   - файл каталога `.inpx`
-   - папка с архивами FB2
-   - папка данных (по умолчанию `data` рядом с exe)
-4. Дождитесь импорта. Если включён вход, на экране покажут логин/пароль админа — сохраните их.
-5. Пока пользуетесь библиотекой, **не закрывайте** чёрное окно консоли (это и есть LibShelf).
+2. Положите файл куда удобно и запустите двойным щелчком.
+3. В браузере откроется мастер (`/setup.html`). Укажите:
+   - файл `.inpx`
+   - папку с архивами FB2
+   - папку данных (по умолчанию `data` рядом с exe)
+4. Дождитесь импорта. Если выбран вход с логином, на экране покажут пароль админа — сохраните его.
+5. Пока пользуетесь библиотекой, **не закрывайте** окно консоли.
 
-Повторный запуск — снова двойной щелчок: настройки читаются из `libshelf.json` рядом с exe, браузер откроется сам.
+Повторный запуск — снова двойной щелчок. Настройки читаются из `libshelf.json` рядом с exe, браузер открывается сам.
 
 Остановить: закрыть окно консоли или Ctrl+C.
 
-## Быстрый старт (Linux / сервер / из исходников)
+Мастер настройки отвечает только с этого компьютера (запросы с localhost). На удалённом сервере используйте CLI ниже.
 
-### 1. Бинарник
+### Linux на этом компьютере
 
-С [Releases / latest](https://github.com/amachulan/libshelf/releases/tag/latest):
+```sh
+curl -L -o libshelf \
+  https://github.com/amachulan/libshelf/releases/download/latest/libshelf-linux-amd64
+chmod +x libshelf
+./libshelf start
+```
+
+При пустой базе откроется тот же мастер в браузере. Конфиг пишется в `libshelf.json` рядом с бинарником.
+
+`./libshelf` без аргументов — то же самое, что `./libshelf start`.
+
+### Linux на сервере
+
+Мастер с другой машины не сработает. Импортируйте каталог и поднимите сервер из CLI:
+
+```sh
+./libshelf import \
+  --inpx /path/to/catalog.inpx \
+  --library-dir /path/to/fb2/archives \
+  --data-dir /path/to/libshelf-data
+
+./libshelf serve \
+  --library-dir /path/to/fb2/archives \
+  --data-dir /path/to/libshelf-data \
+  --auth users
+```
+
+Откройте `http://127.0.0.1:12380`. Проверка:
+
+```sh
+curl -s http://127.0.0.1:12380/health
+# ok <git-sha>
+```
+
+`import` читает `.inpx` в SQLite. Архивы при этом не копируются; `--library-dir` нужен команде и позже `serve`, чтобы открывать книги из тех же папок.
+
+Если пользователей ещё нет, при `--auth=users` создаётся админ: из `LIBSHELF_ADMIN_USER` / `LIBSHELF_ADMIN_PASS` или логин `admin` и случайный пароль в логе процесса.
+
+Дальше: [авторизация](#авторизация), [OPDS](#opds), [nginx](#обратный-прокси-nginx), [два каталога](#два-каталога-inpx).
+
+## Установка и настройка
+
+### Готовые сборки
+
+Каждый push в `master` собирает linux amd64 и windows amd64 и обновляет pre-release [`latest`](https://github.com/amachulan/libshelf/releases/tag/latest).
 
 | Файл | Назначение |
 |------|------------|
 | [`libshelf-linux-amd64`](https://github.com/amachulan/libshelf/releases/download/latest/libshelf-linux-amd64) | сервер, NAS, VPS |
-| [`libshelf-windows-amd64.exe`](https://github.com/amachulan/libshelf/releases/download/latest/libshelf-windows-amd64.exe) | ПК Windows (см. выше) |
+| [`libshelf-windows-amd64.exe`](https://github.com/amachulan/libshelf/releases/download/latest/libshelf-windows-amd64.exe) | ПК Windows |
 
-Или сборка из исходников:
+### Сборка из исходников
+
+Нужен Go 1.22+. CGO не требуется.
 
 ```sh
 git clone https://github.com/amachulan/libshelf.git
@@ -67,107 +148,50 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o libshelf-linux-amd64 ./cmd/lib
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o libshelf-windows-amd64.exe ./cmd/libshelf
 ```
 
-### 2. Режим start (мастер в браузере)
+### Что указать при запуске
 
-На любой ОС можно так же, как на Windows:
+1. Файл `.inpx` (формат MyHomeLib / совместимые сборки).
+2. Каталог с архивами, на которые ссылается этот `.inpx` (`--library-dir`; можно несколько).
+3. Каталог данных LibShelf: SQLite и кэш обложек (`--data-dir`).
 
-```sh
-./libshelf start
-# или просто: ./libshelf
+Архивы — zip или 7z, как в типичном дампе FB2. LibShelf открывает файл внутри архива по записи из каталога.
+
+Повторный полный импорт: `import --replace`. База пользователей `users.db` (аккаунты, полки, прогресс) при этом не трогается.
+
+Дописать книги из другого `.inpx` без очистки базы: `import --append` (пропускаются LIBID, которые уже есть).
+
+### Конфиг `libshelf.json`
+
+При `start` файл лежит рядом с бинарником (или путь задаётся `--config`).
+
+```json
+{
+  "addr": "127.0.0.1:12380",
+  "library_dir": "/path/to/fb2/archives",
+  "data_dir": "/path/to/libshelf-data",
+  "inpx": "/path/to/catalog.inpx",
+  "auth": "users",
+  "languages": ["ru"],
+  "open_browser": true
+}
 ```
 
-При пустой базе откроется `/setup.html`. Конфиг пишется в `libshelf.json` рядом с бинарником.
+Несколько корней архивов: поле `library_dirs` (массив) плюс `library_dir`. На `serve` то же самое — повторяемый `--library-dir`.
 
-### 3. Импорт из CLI
+Языки: в мастере, в `"languages"` (`["ru"]`, `["ru","en"]` или `["*"]`), флаг `--lang` (повторяемый) или `LIBSHELF_LANGUAGES=ru,en`. После смены языков при старте пересоберётся поисковый индекс.
 
-```sh
-./libshelf import \
-  --inpx /path/to/catalog.inpx \
-  --library-dir /path/to/fb2/archives \
-  --data-dir /path/to/libshelf-data
-```
-
-Повторный полный импорт (пересоздать индекс книг): добавьте `--replace`.  
-База пользователей (`users.db`: аккаунты, полки, прогресс) при `--replace` **не** трогается.
-
-### 4. Запуск сервера (без мастера)
-
-```sh
-./libshelf serve \
-  --addr 127.0.0.1:12380 \
-  --library-dir /path/to/fb2/archives \
-  --data-dir /path/to/libshelf-data \
-  --auth users \
-  --open
-```
-
-Откройте в браузере `http://127.0.0.1:12380` (или доверьте `--open`).
-
-Проверка:
-
-```sh
-curl -s http://127.0.0.1:12380/health
-# ok <git-sha>
-```
-
-## Два каталога `.inpx` (старый + новый)
-
-Типичный случай: в старом дампе есть книги, которых нет в свежем (или наоборот). Старый дамп **не трогаем**; новый после получения чистим от дублей и дописываем в базу.
-
-1. Положить свежий слепок в отдельную папку (например `/data/books-new/`).
-2. Убрать из нового `.inpx` всё, что уже есть в вашей базе:
-
-```sh
-./libshelf dedupe \
-  --base-db /opt/libshelf/data/libshelf.db \
-  --incoming /data/books-new/catalog.inpx \
-  --out /data/books-new/catalog.unique.inpx \
-  --library-dir /data/books-new \
-  --prune-empty-archives
-```
-
-Сначала можно добавить `--dry-run`, чтобы только увидеть список архивов на удаление.
-
-3. Дописать каталог без очистки старой базы (zip нового дампа **можно не переносить**):
-
-```sh
-./libshelf import --append \
-  --inpx /data/books-new/catalog.unique.inpx \
-  --library-dir /opt/libshelf/library \
-  --data-dir /opt/libshelf/data
-```
-
-4. Запускать `serve` с **двумя** корнями архивов:
-
-```sh
-./libshelf serve \
-  --library-dir /opt/libshelf/library \
-  --library-dir /data/books-new \
-  --data-dir /opt/libshelf/data \
-  --auth users
-```
-
-Или в `deploy.sh`: `LIBSHELF_LIB_EXTRA=/data/books-new` (несколько путей через `:`).
-
-Вместо `--base-db` можно указать эталонный старый `.inpx`: `--base /path/to/old.inpx`.  
-При конфликте LIBID побеждает уже существующая запись (старая база / первый `--inpx`).
+`start` принимает `--addr HOST:PORT` и `--no-browser`. `serve` — `--addr`, `--auth users|none`, `--lang`, `--open`.
 
 ## Авторизация
 
-По умолчанию `--auth=users`: без логина UI и API недоступны (кроме `/health`, страницы входа и статики логина).
-
-При первом запуске, если пользователей ещё нет, создаётся админ:
-- из переменных окружения `LIBSHELF_ADMIN_USER` / `LIBSHELF_ADMIN_PASS`, или
-- логин `admin` и случайный пароль (смотрите лог процесса при первом старте)
-
-Роли:
+По умолчанию `--auth=users`: без логина UI и API закрыты, кроме `/health`, страницы входа и её статики.
 
 | Роль | Доступ |
 |------|--------|
 | **reader** | поиск, карточки, скачивание, читалка, свои списки |
-| **admin** | всё то же + управление пользователями в UI |
+| **admin** | то же + управление пользователями в UI |
 
-Добавить пользователя из CLI:
+Добавить пользователя:
 
 ```sh
 ./libshelf user add \
@@ -179,22 +203,65 @@ curl -s http://127.0.0.1:12380/health
 
 Открытый режим без логина: `--auth=none`.
 
+## Два каталога `.inpx`
+
+Иногда в старом дампе есть книги, которых нет в свежем (или наоборот). Старый дамп можно не трогать: новый почистить от дублей и дописать в базу.
+
+1. Положить свежий слепок в отдельную папку.
+2. Убрать из нового `.inpx` то, что уже есть в базе:
+
+```sh
+./libshelf dedupe \
+  --base-db /opt/libshelf/data/libshelf.db \
+  --incoming /data/books-new/catalog.inpx \
+  --out /data/books-new/catalog.unique.inpx \
+  --library-dir /data/books-new \
+  --prune-empty-archives
+```
+
+С `--dry-run` скрипт только покажет, какие архивы удалил бы `--prune-empty-archives`.
+
+3. Дописать каталог:
+
+```sh
+./libshelf import --append \
+  --inpx /data/books-new/catalog.unique.inpx \
+  --library-dir /opt/libshelf/library \
+  --data-dir /opt/libshelf/data
+```
+
+Архивы нового дампа можно оставить в своей папке и не копировать к старым.
+
+4. Запускать `serve` с двумя корнями:
+
+```sh
+./libshelf serve \
+  --library-dir /opt/libshelf/library \
+  --library-dir /data/books-new \
+  --data-dir /opt/libshelf/data \
+  --auth users
+```
+
+В `deploy.sh`: `LIBSHELF_LIB_EXTRA=/data/books-new` (несколько путей через `:`).
+
+Вместо `--base-db` можно указать эталонный старый `.inpx`: `--base /path/to/old.inpx`.  
+При совпадении LIBID остаётся уже существующая запись.
+
 ## OPDS
 
-Корень каталога для приложений вроде KOReader / Moon+ / Aldiko:
+Корень каталога:
 
-```
+```text
 http://HOST:PORT/opds
 ```
 
-При `--auth=users` клиент должен уметь **HTTP Basic** (тот же логин/пароль, что и в веб-UI).  
-Basic Auth намеренно работает только для `/opds`, `/download/` и `/cover/`, чтобы браузер не подставлял сохранённые OPDS-учётные данные на весь сайт.
+Поиск: OpenSearch из корневого фида или `/opds/search?q=...`. Дальше — авторы и серии по буквам, жанры, карточка книги и ссылка на FB2.
 
-Поиск: OpenSearch из корневого фида или `/opds/search?q=...`.
+При `--auth=users` клиент должен уметь HTTP Basic (тот же логин и пароль, что в веб-интерфейсе). Basic Auth включён только для `/opds`, `/download/` и `/cover/`, чтобы браузер не подставлял сохранённые OPDS-учётные данные на весь сайт.
 
 ## Обратный прокси (nginx)
 
-Типичная схема: libshelf слушает localhost, снаружи — HTTPS через nginx/Caddy.
+Типичная схема: LibShelf слушает localhost, снаружи — HTTPS.
 
 ```nginx
 server {
@@ -217,19 +284,17 @@ server {
 }
 ```
 
-Важно передать `X-Forwarded-Proto`, иначе cookie сессии могут выставиться без флага `Secure` за HTTPS.
+Нужен `X-Forwarded-Proto`: иначе cookie сессии за HTTPS могут выставиться без флага `Secure`.
 
 ## Обновление с GitHub Releases
 
-Каждый push в `master` собирает **linux amd64** и **windows amd64** в Actions и обновляет pre-release [`latest`](https://github.com/amachulan/libshelf/releases/tag/latest).
+Скрипт `scripts/deploy.sh`:
 
-Вспомогательный скрипт `scripts/deploy.sh`:
+- ждёт, пока в `latest` появится **текущий** commit `master` (не ставит предыдущую сборку);
+- скачивает бинарник и сверяет `libshelf version` с SHA;
+- подменяет файл и перезапускает процесс в `screen`.
 
-- ждёт публикацию **текущего** commit в `latest` (не ставит предыдущую сборку);
-- скачивает бинарник, сверяет `libshelf version` с SHA;
-- подменяет бинарник и перезапускает процесс в `screen` (пути настраиваются env).
-
-Пример установки скрипта:
+Импорт и базу скрипт не трогает — только бинарник и перезапуск `serve`.
 
 ```sh
 sudo mkdir -p /opt/libshelf
@@ -237,18 +302,33 @@ sudo curl -fsSL -o /opt/libshelf/deploy.sh \
   https://raw.githubusercontent.com/amachulan/libshelf/master/scripts/deploy.sh
 sudo chmod +x /opt/libshelf/deploy.sh
 
-# Локальные пути — в deploy.env (не затирается при обновлении deploy.sh):
 sudo tee /opt/libshelf/deploy.env <<'EOF'
-LIBSHELF_LIB="/mnt/share/Книги/fb2.Flibusta.Net"
-LIBSHELF_LIB_EXTRA="/mnt/share/Книги/fb2.Flibusta.Net.2"
+LIBSHELF_LIB="/mnt/share/books/fb2"
+LIBSHELF_LIB_EXTRA="/mnt/share/books/fb2-new"
 EOF
 
 sudo /opt/libshelf/deploy.sh
 ```
 
-Скрипт сам подхватывает `/opt/libshelf/deploy.env` (или путь из `LIBSHELF_ENV`). Переменные окружения по-прежнему можно задать и вручную: `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_LIB_EXTRA` (доп. каталоги через `:`), `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users`|`none`), `LIBSHELF_LANGUAGES`, `LIBSHELF_DEPLOY_WAIT`.
+Скрипт читает `/opt/libshelf/deploy.env` (или путь из `LIBSHELF_ENV`). Этот файл не затирается при повторном скачивании `deploy.sh`.
 
-Импорт и базу скрипт **не** трогает — только бинарник и перезапуск `serve`.
+Переменные: `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_LIB_EXTRA` (доп. каталоги через `:`), `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users` или `none`), `LIBSHELF_LANGUAGES`, `LIBSHELF_DEPLOY_WAIT`, `LIBSHELF_SCREEN`.
+
+## Рейтинги FantLab
+
+Необязательно. Без этого шага каталог, поиск и чтение работают как обычно.
+
+Команда `fantlab-fetch` один раз обходит произведения в базе, ищет совпадение на FantLab (название + фамилия автора) и пишет рейтинг и число оценок в SQLite. Совпавшие книги показывают оценку на карточках. Сортировка жанра «Популярные» ставит выше хорошо оценённые произведения (с учётом числа голосов); без совпадения книга идёт ниже.
+
+Запрос к API вежливый (пауза по умолчанию 1 с), большой каталог индексируется долго. Можно ограничить жанр или число произведений за запуск и продолжить позже — уже обработанные ключи пропускаются.
+
+```sh
+./libshelf fantlab-fetch --data-dir /path/to/libshelf-data
+./libshelf fantlab-fetch --data-dir /path/to/libshelf-data --genre detective --limit 500
+./libshelf fantlab-fetch --data-dir /path/to/libshelf-data --retry-ambiguous
+```
+
+`--retry-failed` заново берёт и `none`, и неоднозначные совпадения; `--retry-ambiguous` — только неоднозначные. `--config` подставляет `data-dir` и языки из `libshelf.json`.
 
 ## CLI
 
@@ -256,47 +336,37 @@ sudo /opt/libshelf/deploy.sh
 libshelf                 (= start)
 libshelf start           [--config FILE] [--addr HOST:PORT] [--no-browser]
 libshelf import          --inpx FILE [--inpx FILE ...] --library-dir DIR --data-dir DIR [--replace|--append]
-libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db PATH) [--library-dir DIR] [--prune-empty-archives] [--dry-run]
-libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR [--addr HOST:PORT] [--auth users|none] [--lang CODE] [--open]
+libshelf dedupe          --incoming FILE --out FILE (--base FILE | --base-db PATH)
+                         [--library-dir DIR] [--prune-empty-archives] [--dry-run]
+libshelf serve           --library-dir DIR [--library-dir DIR ...] --data-dir DIR
+                         [--addr HOST:PORT] [--auth users|none] [--lang CODE] [--open]
 libshelf user add        --data-dir DIR --username NAME --password PASS [--role admin|reader]
+libshelf fantlab-fetch   --data-dir DIR [--config FILE] [--genre CODE] [--limit N]
+                         [--delay 1s] [--retry-failed|--retry-ambiguous]
 libshelf version
 ```
 
-Языки каталога: в мастере setup, в `libshelf.json` (`"languages": ["ru"]` / `["ru","en"]` / `["*"]`), флаг `--lang` (повторяемый) или env `LIBSHELF_LANGUAGES=ru,en`. После смены языков при старте пересоберётся поисковый индекс.
-
-`libshelf.json` (рядом с exe при `start`):
-
-```json
-{
-  "addr": "127.0.0.1:12380",
-  "library_dir": "C:\\\\Books\\\\archives",
-  "data_dir": "C:\\\\LibShelf\\\\data",
-  "inpx": "C:\\\\Books\\\\catalog.inpx",
-  "auth": "users",
-  "languages": ["ru"],
-  "open_browser": true
-}
-```
-
-## API (кратко)
+## HTTP API
 
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | `/api/search?q=&title=&author=&year=&added=` | поиск (`year`/`added` или `*_from`+`*_to`) |
-| GET | `/api/book/{id}` | карточка (+ shelfStatus/progress) |
-| GET | `/api/book/{id}/read` | HTML читалки + оглавление |
+| GET | `/api/book/{id}` | карточка (полка, прогресс, издания) |
+| GET | `/api/book/{id}/read` | содержимое читалки (HTML) и оглавление |
 | PUT | `/api/book/{id}/progress` | `{position:0..1}` |
-| GET | `/api/shelf?status=reading\|read\|want` | список полки |
+| GET | `/api/author/{id}` | книги автора и его серии |
+| GET | `/api/series/{id}` | книги серии |
+| GET | `/api/shelf?status=reading\|read\|want` | полка |
 | GET | `/api/shelf/continue` | продолжить чтение |
 | PUT | `/api/shelf/{id}` | `{status}` или `{status:null}` |
 | GET | `/api/catalog/authors` | буквы / авторы (`?q=` — префикс имени) |
 | GET | `/api/catalog/series` | серии (`?q=` — префикс названия) |
 | GET | `/api/catalog/genres` | жанры |
-| GET | `/api/catalog/genres/{code}` | книги жанра |
-| GET | `/opds` | OPDS root |
+| GET | `/api/catalog/genres/{code}` | книги жанра (`?sort=popular\|new\|title`) |
+| GET | `/opds` | корень OPDS |
 | GET | `/cover/{id}` | обложка |
 | GET | `/download/{id}` | скачать FB2 |
 | GET | `/api/stats` | число видимых книг |
-| GET | `/health` | health-check (`ok <sha>`) |
+| GET | `/health` | `ok <sha>` |
 
-При `--auth=users` большинство `/api/*` требуют сессию (cookie после `/api/login`).
+При `--auth=users` большинство `/api/*` требуют сессию (cookie после `POST /api/login`).
