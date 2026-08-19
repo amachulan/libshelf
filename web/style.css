@@ -25,6 +25,7 @@
   --top-font: 0.875rem;
   --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --header-bg: rgba(255, 253, 248, 0.92);
+  --reader-max: clamp(42rem, 12rem + 40vw, 88rem);
 }
 
 [data-theme="dark"] {
@@ -1050,9 +1051,8 @@ html.boot-reader body {
   fill: currentColor;
   stroke: none;
 }
-
 .reader-content {
-  max-width: 42rem;
+  max-width: var(--reader-max);
   margin: 0 auto;
   padding: 1.5rem 1.25rem 4rem;
   line-height: 1.7;
@@ -1233,9 +1233,9 @@ body.reader-pages.reader-chrome-hidden .reader-page-nav {
 */
 body.reader-pages .reader-content {
   box-sizing: border-box;
-  width: min(42rem, 100%);
+  width: min(var(--reader-max), 100%);
   height: auto;
-  max-width: 42rem;
+  max-width: var(--reader-max);
   max-height: none;
   margin: 0;
   padding: 1.15rem 1.25rem 1.5rem;
