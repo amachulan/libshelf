@@ -502,10 +502,17 @@ html.boot-reader #site-main {
   display: none !important;
 }
 html.boot-reader #reader {
-  display: block !important;
+  display: flex !important;
+  flex-direction: column;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 html.boot-reader body {
   background: var(--bg);
+  overflow: hidden;
+  height: 100dvh;
 }
 
 .lead { color: var(--muted); max-width: 40rem; line-height: 1.5; }
@@ -1105,6 +1112,39 @@ body.reader-align-justify .reader-content .fb2-img {
 
 body.reading-mode {
   background: var(--bg);
+  overflow: hidden;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+/* Scroll the article, not the window — tapping the toolbar otherwise
+   jumps iOS/Android back to the start of the book. */
+body.reading-mode #reader {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.reading-mode:not(.reader-pages) .reader-bar {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+body.reading-mode:not(.reader-pages) .reader-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.reading-mode:not(.reader-pages) .reader-viewport {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* Fullscreen reading — fill the screen after Fullscreen API. */

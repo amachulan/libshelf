@@ -90,6 +90,12 @@ let readerPageIndex = 0;
 /** Page start offsets (px): X for pages-h, Y for pages-v. */
 let readerPageOffsets = [0];
 let readerPageStride = 0;
+/** Last trusted 0..1 place in the book; survives collapsed layout / iOS scroll jumps. */
+let lastGoodReaderPos = 0;
+let lastKnownContentH = 0;
+let pinnedReaderPos = null;
+let pinReaderTimer = 0;
+let restorePlaceTries = 0;
 
 function pageModeActive() {
   return (
@@ -1056,9 +1062,7 @@ function applyFontScale(opts = {}) {
   const pos = keepPosition && readerBookId ? readerPosition() : null;
   $("reader-content").style.fontSize = `${fontScale}rem`;
   localStorage.setItem("libshelf_font", String(fontScale));
-  if (pos != null) {
-    requestAnimationFrame(() => restoreReaderPosition(pos));
-  }
+  if (pos != null) restoreReaderPositionSoon(pos);
 }
 
 function readerFontDef() {
@@ -1079,9 +1083,7 @@ function applyReaderFont(opts = {}) {
     btn.setAttribute("aria-label", btn.title);
     btn.classList.toggle("is-serif", def.id === "serif");
   }
-  if (pos != null) {
-    requestAnimationFrame(() => restoreReaderPosition(pos));
-  }
+  if (pos != null) restoreReaderPositionSoon(pos);
 }
 
 function cycleReaderFont() {
@@ -1461,35 +1463,98 @@ function applyTextAlign() {
 
 function setTextAlign(mode) {
   textAlign = mode === "left" ? "left" : "justify";
-  const pos = readerBookId && pageModeActive() ? readerPosition() : null;
+  const pos = readerBookId ? readerPosition() : null;
   applyTextAlign();
-  if (pos != null) {
-    requestAnimationFrame(() => restoreReaderPosition(pos));
+  if (pos != null) restoreReaderPositionSoon(pos);
+}
+
+function clampReaderPos(pos) {
+  const p = Number(pos);
+  if (!Number.isFinite(p)) return 0;
+  return Math.min(1, Math.max(0, p));
+}
+
+function pinReaderPlace() {
+  if (!readerBookId) return;
+  pinnedReaderPos = readerPosition();
+  if (pinReaderTimer) clearTimeout(pinReaderTimer);
+  pinReaderTimer = setTimeout(() => {
+    pinnedReaderPos = null;
+    pinReaderTimer = 0;
+  }, 600);
+}
+
+function scrollViewportEl() {
+  return readerViewportEl();
+}
+
+function pageLayoutCollapsed(total, viewH) {
+  if (viewH < 80 || total < 40) return true;
+  if (lastKnownContentH > viewH * 2 && total <= viewH + 8) return true;
+  return false;
+}
+
+function readReaderPosition() {
+  if (pageModeActive()) {
+    const el = readerContentEl();
+    const total = el ? el.scrollHeight : 0;
+    const viewH = pageViewportHeight();
+    if (pageLayoutCollapsed(total, viewH)) return null;
+    lastKnownContentH = total;
+    const maxScroll = Math.max(0, total - viewH);
+    if (maxScroll <= 0) return 0;
+    const y = readerPageOffsets[readerPageIndex] || 0;
+    return clampReaderPos(y / maxScroll);
   }
+  const vp = scrollViewportEl();
+  if (!vp) return null;
+  const total = vp.scrollHeight;
+  const viewH = vp.clientHeight;
+  if (pageLayoutCollapsed(total, viewH)) return null;
+  lastKnownContentH = total;
+  const max = total - viewH;
+  if (max <= 0) return 0;
+  return clampReaderPos(vp.scrollTop / max);
 }
 
 function readerPosition() {
-  if (pageModeActive()) {
-    const el = readerContentEl();
-    const total = el ? el.scrollHeight : 0;
-    const maxScroll = Math.max(0, total - pageViewportHeight());
-    if (maxScroll <= 0) return 0;
-    const y = readerPageOffsets[readerPageIndex] || 0;
-    return Math.min(1, Math.max(0, y / maxScroll));
+  const raw = readReaderPosition();
+  if (raw == null) return pinnedReaderPos ?? lastGoodReaderPos;
+  if (raw < 0.001 && pinnedReaderPos != null && pinnedReaderPos > 0.001) {
+    return pinnedReaderPos;
   }
-  const el = document.documentElement;
-  const max = el.scrollHeight - el.clientHeight;
-  if (max <= 0) return 0;
-  return Math.min(1, Math.max(0, el.scrollTop / max));
+  lastGoodReaderPos = raw;
+  return raw;
 }
 
-function restoreReaderPosition(pos) {
-  const p = Math.min(1, Math.max(0, Number(pos) || 0));
+function restoreReaderPositionSoon(pos) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => restoreReaderPosition(pos));
+  });
+}
+
+function restoreReaderPosition(pos, opts = {}) {
+  if (!readerBookId) return;
+  const p = clampReaderPos(pos);
+  lastGoodReaderPos = p;
+  const relayout = opts.relayout !== false;
+
   if (pageModeActive()) {
-    rebuildReaderPages();
     const el = readerContentEl();
     const total = el ? el.scrollHeight : 0;
-    const maxScroll = Math.max(0, total - pageViewportHeight());
+    const viewH = pageViewportHeight();
+    if (pageLayoutCollapsed(total, viewH)) {
+      if (restorePlaceTries++ < 12) {
+        requestAnimationFrame(() => restoreReaderPosition(p, opts));
+      } else {
+        restorePlaceTries = 0;
+      }
+      return;
+    }
+    restorePlaceTries = 0;
+    if (relayout) rebuildReaderPages();
+    const laidOut = el ? el.scrollHeight : 0;
+    const maxScroll = Math.max(0, laidOut - pageViewportHeight());
     const targetY = p * maxScroll;
     let best = 0;
     for (let i = 0; i < readerPageOffsets.length; i++) {
@@ -1500,9 +1565,19 @@ function restoreReaderPosition(pos) {
     applyPageTransform(false);
     return;
   }
-  const el = document.documentElement;
-  const max = el.scrollHeight - el.clientHeight;
-  el.scrollTop = max > 0 ? p * max : 0;
+
+  const vp = scrollViewportEl();
+  if (!vp || vp.clientHeight < 40) {
+    if (restorePlaceTries++ < 12) {
+      requestAnimationFrame(() => restoreReaderPosition(p, opts));
+    } else {
+      restorePlaceTries = 0;
+    }
+    return;
+  }
+  restorePlaceTries = 0;
+  const max = vp.scrollHeight - vp.clientHeight;
+  vp.scrollTop = max > 0 ? p * max : 0;
 }
 
 function flipReaderPage(dir, fromSlide = 0) {
@@ -1517,10 +1592,8 @@ function setReadMode(mode) {
   readMode = next;
   applyReadMode();
   if (readerBookId) {
-    requestAnimationFrame(() => {
-      restoreReaderPosition(pos);
-      scheduleSaveProgress();
-    });
+    restoreReaderPositionSoon(pos);
+    scheduleSaveProgress();
   }
 }
 
@@ -1565,6 +1638,9 @@ async function openReader(id) {
   const data = await res.json();
   readerBookId = id;
   restorePosition = data.position || 0;
+  lastGoodReaderPos = restorePosition;
+  lastKnownContentH = 0;
+  pinnedReaderPos = null;
   $("reader-title").textContent = data.title || "";
   $("reader-content").innerHTML = data.html || "";
   applyReaderFont({ keepPosition: false });
@@ -1608,16 +1684,18 @@ function syncFullscreenButton() {
   btn.setAttribute("aria-pressed", on ? "true" : "false");
 }
 
-function preserveReaderPageAfterResize() {
-  if (!pageModeActive() || !readerBookId) return;
-  const pos = readerPosition();
-  requestAnimationFrame(() => {
-    restoreReaderPosition(pos);
-  });
+function preserveReaderPlaceAfterResize() {
+  if (!readerBookId) return;
+  const remembered = pinnedReaderPos ?? lastGoodReaderPos;
+  const raw = readReaderPosition();
+  const pos =
+    raw == null || (raw < 0.001 && remembered > 0.001) ? remembered : raw;
+  restoreReaderPositionSoon(pos);
 }
 
 async function toggleReaderFullscreen() {
   if (!fullscreenSupported()) return;
+  pinReaderPlace();
   try {
     if (fullscreenElement()) {
       await exitReaderFullscreen();
@@ -1638,6 +1716,9 @@ function closeReader() {
   readerBookId = null;
   readerPageIndex = 0;
   readerPageOffsets = [0];
+  lastGoodReaderPos = 0;
+  lastKnownContentH = 0;
+  pinnedReaderPos = null;
   pageFlipBusy = false;
   if (pageFlipTimer) {
     clearTimeout(pageFlipTimer);
@@ -2035,8 +2116,11 @@ window.addEventListener("scroll", () => {
   if (pageModeActive()) {
     // Kill any native window scroll that sneaks through on desktop trackpads.
     if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
-    return;
   }
+}, { passive: true });
+
+readerViewportEl()?.addEventListener("scroll", () => {
+  if (!readerBookId || pageModeActive()) return;
   scheduleSaveProgress();
 }, { passive: true });
 
@@ -2161,7 +2245,7 @@ readerEl.addEventListener("touchend", (e) => {
     }
     const pos = readerPosition();
     document.body.classList.toggle("reader-chrome-hidden");
-    requestAnimationFrame(() => restoreReaderPosition(pos));
+    restoreReaderPositionSoon(pos);
     return;
   }
 
@@ -2186,6 +2270,9 @@ readerEl.addEventListener("touchcancel", () => {
 }, { passive: true, capture: true });
 
 $("reader-back").addEventListener("click", closeReader);
+document.querySelector(".reader-bar")?.addEventListener("pointerdown", () => {
+  pinReaderPlace();
+}, { capture: true });
 $("reader-mode-btn").addEventListener("click", () => {
   cycleReadMode();
 });
@@ -2210,7 +2297,7 @@ $("reader-fs-btn").addEventListener("click", () => {
 });
 function onFullscreenChange() {
   syncFullscreenButton();
-  preserveReaderPageAfterResize();
+  preserveReaderPlaceAfterResize();
 }
 document.addEventListener("fullscreenchange", onFullscreenChange);
 document.addEventListener("webkitfullscreenchange", onFullscreenChange);
@@ -2237,7 +2324,7 @@ function onReaderViewportChange() {
     const h = pageViewportHeight();
     if (lastPageViewportH > 0 && Math.abs(h - lastPageViewportH) < 3) return;
     lastPageViewportH = h;
-    preserveReaderPageAfterResize();
+    preserveReaderPlaceAfterResize();
   }, 80);
 }
 
