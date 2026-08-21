@@ -258,6 +258,16 @@
       </div>
       <button type="button" id="reader-page-next" class="reader-page-nav reader-page-next" title="Следующая страница" aria-label="Следующая страница">›</button>
     </div>
+    <div id="note-pop" class="note-pop hidden" hidden>
+      <button type="button" class="note-pop-backdrop" id="note-pop-dismiss" aria-label="Закрыть"></button>
+      <div class="note-pop-card" role="dialog" aria-modal="true" aria-labelledby="note-pop-title">
+        <div class="note-pop-head">
+          <div id="note-pop-title" class="note-pop-title">Примечание</div>
+          <button type="button" id="note-pop-close" class="icon-btn" title="Закрыть" aria-label="Закрыть">×</button>
+        </div>
+        <div id="note-pop-body" class="note-pop-body"></div>
+      </div>
+    </div>
   </div>
 
   <script src="/theme.js"></script>

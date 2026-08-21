@@ -1100,6 +1100,72 @@ function readerViewportEl() {
   return document.querySelector(".reader-viewport");
 }
 
+function notePopEl() {
+  return $("note-pop");
+}
+
+function notePopOpen() {
+  const el = notePopEl();
+  return !!(el && !el.classList.contains("hidden"));
+}
+
+function hideNotePop() {
+  const el = notePopEl();
+  if (!el) return;
+  el.classList.add("hidden");
+  el.hidden = true;
+  const body = $("note-pop-body");
+  if (body) body.innerHTML = "";
+}
+
+function showNotePop(noteEl) {
+  const pop = notePopEl();
+  const body = $("note-pop-body");
+  const title = $("note-pop-title");
+  if (!pop || !body || !noteEl) return;
+  const clone = noteEl.cloneNode(true);
+  const label = clone.querySelector(".fb2-note-label");
+  const labelText = label ? label.textContent.trim() : "";
+  if (label) label.remove();
+  title.textContent = labelText ? "Примечание " + labelText : "Примечание";
+  body.innerHTML = "";
+  while (clone.firstChild) body.appendChild(clone.firstChild);
+  pop.classList.remove("hidden");
+  pop.hidden = false;
+}
+
+function readerNoteTarget(anchor) {
+  if (!anchor) return null;
+  const href = anchor.getAttribute("href") || "";
+  if (!href.startsWith("#") || href.length < 2) return null;
+  let id = href.slice(1);
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    /* keep raw id */
+  }
+  if (!id) return null;
+  const note = document.getElementById(id);
+  if (!note) return null;
+  if (note.classList.contains("fb2-note") || note.closest(".fb2-notes")) return note;
+  return null;
+}
+
+function onReaderLinkClick(e) {
+  const el = eventElement(e.target);
+  const a = el?.closest?.("a");
+  if (!a || !readerContentEl()?.contains(a)) return;
+  if (a.classList.contains("fb2-ext")) return;
+  const note = readerNoteTarget(a);
+  if (!note) {
+    if ((a.getAttribute("href") || "").startsWith("#")) e.preventDefault();
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  showNotePop(note);
+}
+
 /** Visible size of the page viewport (layout can be taller than the screen with browser chrome). */
 function pageViewportBox() {
   const vp = readerViewportEl();
@@ -1620,6 +1686,7 @@ function scheduleSaveProgress() {
 
 async function openReader(id) {
   currentBookId = id;
+  hideNotePop();
   show("reader");
   applyReadMode();
   history.pushState({ read: id }, "", "/?read=" + id);
@@ -1725,6 +1792,7 @@ function closeReader() {
     pageFlipTimer = 0;
   }
   endPageTouch();
+  hideNotePop();
   document.body.classList.remove(
     "reader-pages",
     "reader-pages-h",
@@ -2130,6 +2198,7 @@ let wheelLocked = false;
 let wheelResetTimer = 0;
 window.addEventListener("wheel", (e) => {
   if (!pageModeActive()) return;
+  if (notePopOpen()) return;
   e.preventDefault();
   if (wheelLocked) return;
   // Prefer horizontal delta; fall back to vertical (mouse wheel).
@@ -2148,8 +2217,18 @@ window.addEventListener("wheel", (e) => {
 /** @type {null | { x: number, y: number, t: number, axis: ""|"h"|"v", sliding: boolean, lastX: number, lastY: number, lastT: number }} */
 let pageTouch = null;
 
+function eventElement(target) {
+  if (!target) return null;
+  return target.nodeType === 1 ? target : target.parentElement;
+}
+
 function touchOnReaderChrome(target) {
-  return !!(target && target.closest && target.closest(".reader-bar, .reader-page-nav"));
+  const el = eventElement(target);
+  return !!(
+    el &&
+    el.closest &&
+    el.closest(".reader-bar, .reader-page-nav, .note-pop, a.fb2-note-ref, a.fb2-ref, a.fb2-ext")
+  );
 }
 
 // Block native document pan in page mode (Android rubber-band / scroll steal).
@@ -2270,6 +2349,9 @@ readerEl.addEventListener("touchcancel", () => {
 }, { passive: true, capture: true });
 
 $("reader-back").addEventListener("click", closeReader);
+$("reader-content").addEventListener("click", onReaderLinkClick);
+$("note-pop-close")?.addEventListener("click", hideNotePop);
+$("note-pop-dismiss")?.addEventListener("click", hideNotePop);
 document.querySelector(".reader-bar")?.addEventListener("pointerdown", () => {
   pinReaderPlace();
 }, { capture: true });
@@ -2304,6 +2386,13 @@ document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 syncFullscreenButton();
 
 window.addEventListener("keydown", (e) => {
+  if (notePopOpen()) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      hideNotePop();
+    }
+    return;
+  }
   if (!pageModeActive()) return;
   if (e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
     e.preventDefault();

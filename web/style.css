@@ -1095,6 +1095,81 @@ body.reader-align-justify .reader-content .fb2-img {
 
 .reader-content p { margin: 0 0 0.9rem; }
 
+.reader-content a.fb2-note-ref,
+.reader-content a.fb2-ref {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+  cursor: pointer;
+}
+.reader-content a.fb2-ext {
+  color: var(--accent);
+}
+
+.note-pop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+.note-pop.hidden {
+  display: none;
+}
+.note-pop-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.note-pop-card {
+  position: relative;
+  width: min(36rem, 100%);
+  max-height: min(70dvh, 32rem);
+  overflow: auto;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 14px 14px 10px 10px;
+  box-shadow: var(--shadow);
+  padding: 0.85rem 1rem 1.1rem;
+}
+.note-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+.note-pop-title {
+  flex: 1;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.note-pop-body {
+  font-size: 0.98em;
+  line-height: 1.65;
+}
+.note-pop-body p {
+  margin: 0 0 0.7rem;
+}
+.note-pop-body p:last-child {
+  margin-bottom: 0;
+}
+@media (min-width: 720px) {
+  .note-pop {
+    align-items: center;
+    padding: 1.5rem;
+  }
+  .note-pop-card {
+    border-radius: 14px;
+  }
+}
+
 .reader-content .fb2-img {
   display: block;
   max-width: 100%;
