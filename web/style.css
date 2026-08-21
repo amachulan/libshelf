@@ -1101,6 +1101,13 @@ body.reader-align-justify .reader-content .fb2-img {
   text-decoration: none;
   border-bottom: 1px dotted currentColor;
   cursor: pointer;
+  font-weight: 650;
+}
+.reader-content a.fb2-note-ref {
+  font-size: 0.78em;
+  vertical-align: super;
+  line-height: 0;
+  padding: 0 0.05em;
 }
 .reader-content a.fb2-ext {
   color: var(--accent);

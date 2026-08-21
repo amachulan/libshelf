@@ -93,3 +93,77 @@ func TestExtractReaderNotes(t *testing.T) {
 		t.Fatalf("note duplicated: %s", doc.HTML)
 	}
 }
+
+func TestExtractReaderPlainNoteMarkers(t *testing.T) {
+	const sample = `<?xml version="1.0" encoding="utf-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">
+  <description>
+    <title-info>
+      <book-title>Заметки</book-title>
+      <lang>ru</lang>
+    </title-info>
+  </description>
+  <body>
+    <section>
+      <title><p>Глава</p></title>
+      <p>волок ушкуи [3] на перекатах.</p>
+    </section>
+  </body>
+  <body>
+    <title><p>Примечания</p></title>
+    <section id="n_3">
+      <title><p>3</p></title>
+      <p>Ушкуи — новгородские суда.</p>
+    </section>
+  </body>
+</FictionBook>`
+
+	doc, err := ExtractReader(strings.NewReader(sample))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc.HTML, `class="fb2-note-ref"`) || !strings.Contains(doc.HTML, `href="#n_3"`) {
+		t.Fatalf("plain [3] was not linked: %s", doc.HTML)
+	}
+	if !strings.Contains(doc.HTML, "новгородские суда") {
+		t.Fatalf("missing unnamed notes body: %s", doc.HTML)
+	}
+}
+
+func TestExtractReaderNotesAppendix(t *testing.T) {
+	const sample = `<?xml version="1.0" encoding="utf-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">
+  <description>
+    <title-info>
+      <book-title>Заметки</book-title>
+      <lang>ru</lang>
+    </title-info>
+  </description>
+  <body>
+    <section>
+      <title><p>Глава</p></title>
+      <p>ушкуи [3] на перекатах.</p>
+    </section>
+    <section>
+      <title><p>Примечания</p></title>
+      <section id="n_3">
+        <title><p>3</p></title>
+        <p>Новгородские суда.</p>
+      </section>
+    </section>
+  </body>
+</FictionBook>`
+
+	doc, err := ExtractReader(strings.NewReader(sample))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc.HTML, `href="#n_3"`) || !strings.Contains(doc.HTML, "Новгородские суда") {
+		t.Fatalf("appendix notes: %s", doc.HTML)
+	}
+	for _, ch := range doc.Chapters {
+		if strings.Contains(strings.ToLower(ch.Title), "примечан") {
+			t.Fatalf("notes heading became a chapter: %#v", doc.Chapters)
+		}
+	}
+}

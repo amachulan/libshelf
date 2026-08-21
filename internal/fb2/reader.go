@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -118,6 +119,20 @@ func isNotesBodyName(name string) bool {
 	}
 }
 
+func isNotesHeading(s string) bool {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.Trim(s, ".:")
+	switch s {
+	case "notes", "footnotes", "comments", "примечания", "комментарии", "сноски":
+		return true
+	}
+	return strings.HasPrefix(s, "примечан") || strings.HasPrefix(s, "комментар") || strings.HasPrefix(s, "сноск")
+}
+
+var noteMarkerRe = regexp.MustCompile(`\[(\d{1,4})\]`)
+var noteIDNumRe = regexp.MustCompile(`(?i)(?:n_|note[_-]?|ftn|fn|_ftn|_ftnref|cite_note[_-]?)?(\d{1,4})$`)
+var noteLabelRe = regexp.MustCompile(`(?s)class="fb2-note-label">([^<]*)`)
+
 type fb2Note struct {
 	id   string
 	html string
@@ -138,6 +153,7 @@ func renderBody(r io.Reader, binaries map[string]string) (*ReaderDoc, error) {
 	noteN := 0
 	inBody := false
 	inNotes := false
+	inNotesAppendix := false
 	inTitle := false
 	noteID := ""
 	var dest *strings.Builder
@@ -149,7 +165,7 @@ func renderBody(r io.Reader, binaries map[string]string) (*ReaderDoc, error) {
 			dest = nil
 			return
 		}
-		if inNotes {
+		if inNotes || inNotesAppendix {
 			if noteID != "" {
 				dest = &noteBuf
 			} else {
@@ -183,12 +199,17 @@ func renderBody(r io.Reader, binaries map[string]string) (*ReaderDoc, error) {
 			syncDest()
 			return
 		}
-		if inNotes {
+		if inNotes || inNotesAppendix {
 			if noteID != "" {
 				noteBuf.WriteString(`<p class="fb2-note-label">`)
 				noteBuf.WriteString(html.EscapeString(t))
 				noteBuf.WriteString("</p>")
 			}
+			syncDest()
+			return
+		}
+		if inBody && sectionDepth == 1 && isNotesHeading(t) {
+			inNotesAppendix = true
 			syncDest()
 			return
 		}
@@ -272,25 +293,20 @@ func renderBody(r io.Reader, binaries map[string]string) (*ReaderDoc, error) {
 			case "body":
 				bodyCount++
 				nameAttr := attr(t, "name")
-				if isNotesBodyName(nameAttr) {
+				if isNotesBodyName(nameAttr) || bodyCount > 1 {
 					inNotes = true
 					inBody = false
+					inNotesAppendix = false
 					sectionDepth = 0
 					syncDest()
-					continue
-				}
-				if bodyCount > 1 {
-					if err := dec.Skip(); err != nil {
-						return nil, err
-					}
 					continue
 				}
 				inBody = true
 				inNotes = false
 				syncDest()
 			case "section":
-				if inNotes {
-					if sectionDepth == 0 {
+				if inNotes || inNotesAppendix {
+					if (!inNotesAppendix && sectionDepth == 0) || (inNotesAppendix && sectionDepth == 1) {
 						if noteID != "" {
 							flushNote()
 						}
@@ -328,20 +344,28 @@ func renderBody(r io.Reader, binaries map[string]string) (*ReaderDoc, error) {
 			name := strings.ToLower(t.Name.Local)
 			switch name {
 			case "body":
-				if inNotes && noteID != "" {
+				if (inNotes || inNotesAppendix) && noteID != "" {
 					flushNote()
 				}
 				inBody = false
 				inNotes = false
+				inNotesAppendix = false
 				noteID = ""
 				syncDest()
 			case "section":
-				if inNotes {
-					if sectionDepth == 1 {
+				if inNotes || inNotesAppendix {
+					noteDepth := 1
+					if inNotesAppendix {
+						noteDepth = 2
+					}
+					if sectionDepth == noteDepth {
 						flushNote()
 					}
 					if sectionDepth > 0 {
 						sectionDepth--
+					}
+					if inNotesAppendix && sectionDepth == 0 {
+						inNotesAppendix = false
 					}
 					syncDest()
 					continue
@@ -367,6 +391,10 @@ func renderBody(r io.Reader, binaries map[string]string) (*ReaderDoc, error) {
 		}
 	}
 
+	mainHTML := linkifyNoteMarkers(htmlBuilder.String(), notes)
+	htmlBuilder.Reset()
+	htmlBuilder.WriteString(mainHTML)
+
 	if len(notes) > 0 {
 		htmlBuilder.WriteString(`<aside class="fb2-notes" hidden>`)
 		for _, n := range notes {
@@ -386,6 +414,89 @@ func renderBody(r io.Reader, binaries map[string]string) (*ReaderDoc, error) {
 		return nil, fmt.Errorf("empty fb2 body")
 	}
 	return doc, nil
+}
+
+func noteNumbers(n fb2Note) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		s = strings.Trim(s, "[](). ")
+		if s == "" || seen[s] {
+			return
+		}
+		for _, r := range s {
+			if r < '0' || r > '9' {
+				return
+			}
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	if m := noteLabelRe.FindStringSubmatch(n.html); len(m) == 2 {
+		add(html.UnescapeString(m[1]))
+	}
+	if m := noteIDNumRe.FindStringSubmatch(n.id); len(m) == 2 {
+		add(m[1])
+	}
+	return out
+}
+
+func linkifyNoteMarkers(s string, notes []fb2Note) string {
+	if len(notes) == 0 || !strings.Contains(s, "[") {
+		return s
+	}
+	byNum := map[string]string{}
+	for _, n := range notes {
+		for _, num := range noteNumbers(n) {
+			if _, ok := byNum[num]; !ok {
+				byNum[num] = n.id
+			}
+		}
+	}
+	if len(byNum) == 0 {
+		return s
+	}
+	replace := func(text string, skip bool) string {
+		if skip || text == "" {
+			return text
+		}
+		return noteMarkerRe.ReplaceAllStringFunc(text, func(m string) string {
+			num := m[1 : len(m)-1]
+			id, ok := byNum[num]
+			if !ok {
+				return m
+			}
+			return `<a class="fb2-note-ref" href="#` + html.EscapeString(id) + `">` + m + `</a>`
+		})
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 64)
+	inAnchor := false
+	rest := s
+	for rest != "" {
+		lt := strings.IndexByte(rest, '<')
+		if lt < 0 {
+			b.WriteString(replace(rest, inAnchor))
+			break
+		}
+		b.WriteString(replace(rest[:lt], inAnchor))
+		gt := strings.IndexByte(rest[lt:], '>')
+		if gt < 0 {
+			b.WriteString(rest[lt:])
+			break
+		}
+		tag := rest[lt : lt+gt+1]
+		b.WriteString(tag)
+		lower := strings.ToLower(tag)
+		if strings.HasPrefix(lower, "<a ") || lower == "<a>" {
+			inAnchor = true
+		} else if strings.HasPrefix(lower, "</a") {
+			inAnchor = false
+		}
+		rest = rest[lt+gt+1:]
+	}
+	return b.String()
 }
 
 func writeAnchor(b *strings.Builder, t xml.StartElement) {
@@ -410,7 +521,11 @@ func writeAnchor(b *strings.Builder, t xml.StartElement) {
 
 func imageHref(t xml.StartElement) string {
 	for _, a := range t.Attr {
-		if a.Name.Local == "href" {
+		local := strings.ToLower(a.Name.Local)
+		if i := strings.LastIndex(local, ":"); i >= 0 {
+			local = local[i+1:]
+		}
+		if local == "href" {
 			return strings.TrimPrefix(a.Value, "#")
 		}
 	}
