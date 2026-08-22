@@ -34,14 +34,25 @@ trap cleanup EXIT
 
 api() {
   local path="$1"
-  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    gh api "repos/${REPO}${path}"
-    return
-  fi
-  curl -fsSL \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    "https://api.github.com/repos/${REPO}${path}"
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+      if gh api "repos/${REPO}${path}"; then
+        return 0
+      fi
+    else
+      if curl -fsSL \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/repos/${REPO}${path}"; then
+        return 0
+      fi
+    fi
+    echo "GitHub API ${path} failed (try ${attempt}/5) — sleeping 8s" >&2
+    sleep 8
+  done
+  echo "GitHub API ${path} failed after retries" >&2
+  return 1
 }
 
 master_sha() {
@@ -123,6 +134,10 @@ wait_for_release() {
 }
 
 TARGET_SHA="$(master_sha)"
+if [[ -z "$TARGET_SHA" ]]; then
+  echo "Could not read master SHA from GitHub" >&2
+  exit 1
+fi
 wait_for_release "$TARGET_SHA"
 
 OUT="$TMP/$ASSET"
