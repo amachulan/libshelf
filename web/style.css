@@ -1100,7 +1100,7 @@ body.reader-align-justify .reader-content .fb2-img {
   align-items: center;
   gap: 0.1rem;
   flex: 0 0 auto;
-  padding: 0.15rem 0.4rem calc(0.2rem + env(safe-area-inset-bottom, 0px));
+  padding: 0.2rem 0.4rem 0.3rem;
   border-top: 1px solid var(--line);
   background: var(--header-bg);
   backdrop-filter: blur(8px);
