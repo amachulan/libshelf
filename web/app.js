@@ -234,6 +234,7 @@ function show(panel) {
     document.body.classList.remove("reader-pages", "reader-chrome-hidden");
     lockPageScroll(false);
   }
+  fitReaderFrame();
 
   home.classList.toggle("hidden", panel !== "home");
   results.classList.toggle("hidden", panel !== "results");
@@ -1103,6 +1104,29 @@ function readerViewportEl() {
   return document.querySelector(".reader-viewport");
 }
 
+/** Fill the visible browser area. Android Chrome often reports 100dvh shorter than the screen. */
+function fitReaderFrame() {
+  const el = readerEl;
+  if (!el) return;
+  if (!document.body.classList.contains("reading-mode") || el.classList.contains("hidden")) {
+    el.style.top = "";
+    el.style.left = "";
+    el.style.width = "";
+    el.style.height = "";
+    return;
+  }
+  const vv = window.visualViewport;
+  const top = vv ? vv.offsetTop : 0;
+  const left = vv ? vv.offsetLeft : 0;
+  const w = Math.round(vv ? vv.width : window.innerWidth);
+  const h = Math.round(vv ? vv.height : window.innerHeight);
+  el.style.position = "fixed";
+  el.style.top = top + "px";
+  el.style.left = left + "px";
+  el.style.width = w + "px";
+  el.style.height = h + "px";
+}
+
 function notePopEl() {
   return $("note-pop");
 }
@@ -1842,8 +1866,10 @@ async function openReader(id) {
   applyFontScale({ keepPosition: false });
 
   applyReadMode();
+  fitReaderFrame();
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
+      fitReaderFrame();
       restoreReaderPosition(restorePosition);
       updateTocBar();
     });
@@ -2550,6 +2576,8 @@ let readerViewportTimer = null;
 let lastPageViewportH = 0;
 
 function onReaderViewportChange() {
+  if (!document.body.classList.contains("reading-mode")) return;
+  fitReaderFrame();
   if (!pageModeActive() || !readerBookId) return;
   clearTimeout(readerViewportTimer);
   readerViewportTimer = setTimeout(() => {

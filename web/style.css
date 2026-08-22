@@ -504,15 +504,17 @@ html.boot-reader #site-main {
 html.boot-reader #reader {
   display: flex !important;
   flex-direction: column;
-  height: 100dvh;
-  max-height: 100dvh;
+  position: fixed;
+  inset: 0;
+  height: auto;
+  max-height: none;
   min-height: 0;
   overflow: hidden;
 }
 html.boot-reader body {
   background: var(--bg);
   overflow: hidden;
-  height: 100dvh;
+  height: 100%;
 }
 
 .lead { color: var(--muted); max-width: 40rem; line-height: 1.5; }
@@ -1275,8 +1277,10 @@ body.reader-align-justify .reader-content .fb2-img {
 body.reading-mode {
   background: var(--bg);
   overflow: hidden;
-  height: 100dvh;
-  max-height: 100dvh;
+  position: fixed;
+  inset: 0;
+  height: auto;
+  max-height: none;
 }
 
 /* Scroll the article, not the window — tapping the toolbar otherwise
@@ -1284,8 +1288,10 @@ body.reading-mode {
 body.reading-mode #reader {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  max-height: 100dvh;
+  position: fixed;
+  inset: 0;
+  height: auto;
+  max-height: none;
   min-height: 0;
   overflow: hidden;
 }
@@ -1343,10 +1349,8 @@ html.reader-pages-lock body {
 html.reader-pages-lock body {
   position: fixed;
   inset: 0;
-  /* Dynamic viewport tracks mobile browser chrome better than 100%/100vh. */
-  height: 100dvh;
-  max-height: 100dvh;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  height: auto;
+  max-height: none;
   box-sizing: border-box;
 }
 
