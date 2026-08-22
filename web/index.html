@@ -258,6 +258,27 @@
       </div>
       <button type="button" id="reader-page-next" class="reader-page-nav reader-page-next" title="Следующая страница" aria-label="Следующая страница">›</button>
     </div>
+    <footer id="reader-toc-bar" class="reader-toc-bar hidden">
+      <button type="button" id="reader-toc-btn" class="icon-btn" title="Оглавление" aria-label="Оглавление">
+        <svg class="reader-ico" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 7h14M5 12h14M5 17h10"/>
+        </svg>
+      </button>
+      <button type="button" id="reader-toc-now" class="reader-toc-now" title="Оглавление" aria-label="Оглавление">
+        <span id="reader-toc-title" class="reader-toc-title"></span>
+        <span id="reader-toc-pct" class="reader-toc-pct"></span>
+      </button>
+    </footer>
+    <div id="toc-pop" class="note-pop hidden" hidden>
+      <button type="button" class="note-pop-backdrop" id="toc-pop-dismiss" aria-label="Закрыть"></button>
+      <div class="note-pop-card toc-pop-card" role="dialog" aria-modal="true" aria-labelledby="toc-pop-heading">
+        <div class="note-pop-head">
+          <div id="toc-pop-heading" class="note-pop-title">Оглавление</div>
+          <button type="button" id="toc-pop-close" class="icon-btn" title="Закрыть" aria-label="Закрыть">×</button>
+        </div>
+        <div id="toc-pop-list" class="toc-pop-list"></div>
+      </div>
+    </div>
     <div id="note-pop" class="note-pop hidden" hidden>
       <button type="button" class="note-pop-backdrop" id="note-pop-dismiss" aria-label="Закрыть"></button>
       <div class="note-pop-card" role="dialog" aria-modal="true" aria-labelledby="note-pop-title">

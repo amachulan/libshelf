@@ -1095,6 +1095,86 @@ body.reader-align-justify .reader-content .fb2-img {
 
 .reader-content p { margin: 0 0 0.9rem; }
 
+.reader-toc-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex: 0 0 auto;
+  padding: 0.15rem 0.4rem calc(0.2rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: var(--header-bg);
+  backdrop-filter: blur(8px);
+  z-index: 20;
+}
+.reader-toc-bar .reader-ico {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+}
+.reader-toc-now {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  padding: 0.4rem 0.35rem;
+  cursor: pointer;
+  text-align: left;
+}
+.reader-toc-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reader-toc-pct {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.toc-pop-card {
+  max-height: min(75dvh, 36rem);
+}
+.toc-pop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-height: min(60dvh, 28rem);
+  overflow: auto;
+  margin: 0 -0.25rem;
+}
+.toc-item {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+}
+.toc-item.is-current {
+  color: var(--accent);
+  font-weight: 650;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .reader-content a.fb2-note-ref,
 .reader-content a.fb2-ref {
   color: var(--accent);
@@ -1345,7 +1425,8 @@ body.reader-pages .reader-page-nav:hover {
 
 /* Tap text to hide chrome and use more of the screen. */
 body.reader-pages.reader-chrome-hidden .reader-bar,
-body.reader-pages.reader-chrome-hidden .reader-page-nav {
+body.reader-pages.reader-chrome-hidden .reader-page-nav,
+body.reader-pages.reader-chrome-hidden .reader-toc-bar {
   display: none;
 }
 

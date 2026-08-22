@@ -96,6 +96,9 @@ let lastKnownContentH = 0;
 let pinnedReaderPos = null;
 let pinReaderTimer = 0;
 let restorePlaceTries = 0;
+/** @type {Array<{id: string, title: string}>} */
+let readerChapters = [];
+let tocTick = 0;
 
 function pageModeActive() {
   return (
@@ -1151,6 +1154,122 @@ function readerNoteTarget(anchor) {
   return null;
 }
 
+function tocPopOpen() {
+  const el = $("toc-pop");
+  return !!(el && !el.classList.contains("hidden"));
+}
+
+function hideTocPop() {
+  const el = $("toc-pop");
+  if (!el) return;
+  el.classList.add("hidden");
+  el.hidden = true;
+}
+
+function renderTocList() {
+  const list = $("toc-pop-list");
+  if (!list) return;
+  list.innerHTML = "";
+  readerChapters.forEach((ch, i) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "toc-item";
+    btn.dataset.chapterId = ch.id;
+    btn.textContent = (ch.title || "").trim() || ("Глава " + (i + 1));
+    btn.addEventListener("click", () => jumpToChapter(ch.id));
+    list.appendChild(btn);
+  });
+}
+
+function chapterOffsetY(id) {
+  const content = readerContentEl();
+  const el = document.getElementById(id);
+  if (!content || !el || !content.contains(el)) return null;
+  return el.getBoundingClientRect().top - content.getBoundingClientRect().top;
+}
+
+function currentChapterIndex() {
+  if (!readerChapters.length) return -1;
+  const content = readerContentEl();
+  if (!content) return 0;
+  let y = 0;
+  if (pageModeActive()) {
+    y = (readerPageOffsets[readerPageIndex] || 0) + 12;
+  } else {
+    const vp = scrollViewportEl();
+    y = vp ? vp.scrollTop + 12 : 0;
+  }
+  let best = 0;
+  for (let i = 0; i < readerChapters.length; i++) {
+    const top = chapterOffsetY(readerChapters[i].id);
+    if (top == null) continue;
+    if (top <= y) best = i;
+  }
+  return best;
+}
+
+function updateTocBar() {
+  const bar = $("reader-toc-bar");
+  if (!bar) return;
+  const show = !!(readerBookId && readerChapters.length >= 2);
+  bar.classList.toggle("hidden", !show);
+  if (!show) return;
+  const idx = Math.max(0, currentChapterIndex());
+  const ch = readerChapters[idx];
+  const title = $("reader-toc-title");
+  if (title) title.textContent = (ch && ch.title) || "";
+  const pctEl = $("reader-toc-pct");
+  if (pctEl) {
+    const pct = Math.round(readerPosition() * 100);
+    pctEl.textContent = pct > 0 ? pct + "%" : "";
+  }
+  document.querySelectorAll("#toc-pop-list .toc-item").forEach((el, i) => {
+    el.classList.toggle("is-current", i === idx);
+  });
+}
+
+function scheduleTocUpdate() {
+  if (tocTick) return;
+  tocTick = requestAnimationFrame(() => {
+    tocTick = 0;
+    updateTocBar();
+  });
+}
+
+function showTocPop() {
+  if (readerChapters.length < 2) return;
+  updateTocBar();
+  const pop = $("toc-pop");
+  if (!pop) return;
+  pop.classList.remove("hidden");
+  pop.hidden = false;
+  pop.querySelector(".toc-item.is-current")?.scrollIntoView({ block: "nearest" });
+}
+
+function jumpToChapter(id) {
+  hideTocPop();
+  if (pageModeActive()) {
+    rebuildReaderPages();
+    const y = chapterOffsetY(id);
+    if (y == null) return;
+    let best = 0;
+    for (let i = 0; i < readerPageOffsets.length; i++) {
+      if (readerPageOffsets[i] <= y + 1) best = i;
+      else break;
+    }
+    readerPageIndex = best;
+    applyPageTransform(false);
+  } else {
+    const y = chapterOffsetY(id);
+    if (y == null) return;
+    const vp = scrollViewportEl();
+    if (vp) vp.scrollTop = Math.max(0, y - 6);
+  }
+  lastGoodReaderPos = readerPosition();
+  scheduleSaveProgress();
+  updateTocBar();
+}
+
 function onReaderLinkClick(e) {
   const el = eventElement(e.target);
   const a = el?.closest?.("a");
@@ -1189,11 +1308,12 @@ function pageViewportBox() {
   }
 
   if (h < 80 || w < 80) {
+    const chromeOn = !document.body.classList.contains("reader-chrome-hidden");
     const bar = document.querySelector(".reader-bar");
-    const barH = bar && !document.body.classList.contains("reader-chrome-hidden")
-      ? bar.offsetHeight
-      : 0;
-    const fallbackH = (vv && vv.height >= 80 ? vv.height : window.innerHeight) - barH;
+    const toc = $("reader-toc-bar");
+    const barH = chromeOn && bar ? bar.offsetHeight : 0;
+    const tocH = chromeOn && toc && !toc.classList.contains("hidden") ? toc.offsetHeight : 0;
+    const fallbackH = (vv && vv.height >= 80 ? vv.height : window.innerHeight) - barH - tocH;
     const fallbackW = vv && vv.width >= 80 ? vv.width : window.innerWidth;
     if (h < 80) h = fallbackH;
     if (w < 80) w = fallbackW;
@@ -1414,6 +1534,7 @@ function animatePageFlip(dir, fromSlide = 0) {
     settlePageTransform();
     pageFlipBusy = false;
     scheduleSaveProgress();
+    scheduleTocUpdate();
   };
   const onEnd = (ev) => {
     if (ev && ev.target !== m.el) return;
@@ -1629,6 +1750,7 @@ function restoreReaderPosition(pos, opts = {}) {
     }
     readerPageIndex = best;
     applyPageTransform(false);
+    scheduleTocUpdate();
     return;
   }
 
@@ -1644,6 +1766,7 @@ function restoreReaderPosition(pos, opts = {}) {
   restorePlaceTries = 0;
   const max = vp.scrollHeight - vp.clientHeight;
   vp.scrollTop = max > 0 ? p * max : 0;
+  scheduleTocUpdate();
 }
 
 function flipReaderPage(dir, fromSlide = 0) {
@@ -1687,6 +1810,7 @@ function scheduleSaveProgress() {
 async function openReader(id) {
   currentBookId = id;
   hideNotePop();
+  hideTocPop();
   show("reader");
   applyReadMode();
   history.pushState({ read: id }, "", "/?read=" + id);
@@ -1710,12 +1834,19 @@ async function openReader(id) {
   pinnedReaderPos = null;
   $("reader-title").textContent = data.title || "";
   $("reader-content").innerHTML = data.html || "";
+  readerChapters = Array.isArray(data.chapters) ? data.chapters : [];
+  hideTocPop();
+  renderTocList();
+  updateTocBar();
   applyReaderFont({ keepPosition: false });
   applyFontScale({ keepPosition: false });
 
   applyReadMode();
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => restoreReaderPosition(restorePosition));
+    requestAnimationFrame(() => {
+      restoreReaderPosition(restorePosition);
+      updateTocBar();
+    });
   });
 }
 
@@ -1793,6 +1924,9 @@ function closeReader() {
   }
   endPageTouch();
   hideNotePop();
+  hideTocPop();
+  readerChapters = [];
+  updateTocBar();
   document.body.classList.remove(
     "reader-pages",
     "reader-pages-h",
@@ -2190,6 +2324,7 @@ window.addEventListener("scroll", () => {
 readerViewportEl()?.addEventListener("scroll", () => {
   if (!readerBookId || pageModeActive()) return;
   scheduleSaveProgress();
+  scheduleTocUpdate();
 }, { passive: true });
 
 // Trackpads fire many tiny wheel events — coalesce into one page flip.
@@ -2198,7 +2333,7 @@ let wheelLocked = false;
 let wheelResetTimer = 0;
 window.addEventListener("wheel", (e) => {
   if (!pageModeActive()) return;
-  if (notePopOpen()) return;
+  if (notePopOpen() || tocPopOpen()) return;
   e.preventDefault();
   if (wheelLocked) return;
   // Prefer horizontal delta; fall back to vertical (mouse wheel).
@@ -2227,7 +2362,7 @@ function touchOnReaderChrome(target) {
   return !!(
     el &&
     el.closest &&
-    el.closest(".reader-bar, .reader-page-nav, .note-pop, a.fb2-note-ref, a.fb2-ref, a.fb2-ext")
+    el.closest(".reader-bar, .reader-page-nav, .reader-toc-bar, .note-pop, a.fb2-note-ref, a.fb2-ref, a.fb2-ext")
   );
 }
 
@@ -2352,7 +2487,14 @@ $("reader-back").addEventListener("click", closeReader);
 $("reader-content").addEventListener("click", onReaderLinkClick);
 $("note-pop-close")?.addEventListener("click", hideNotePop);
 $("note-pop-dismiss")?.addEventListener("click", hideNotePop);
+$("reader-toc-btn")?.addEventListener("click", showTocPop);
+$("reader-toc-now")?.addEventListener("click", showTocPop);
+$("toc-pop-close")?.addEventListener("click", hideTocPop);
+$("toc-pop-dismiss")?.addEventListener("click", hideTocPop);
 document.querySelector(".reader-bar")?.addEventListener("pointerdown", () => {
+  pinReaderPlace();
+}, { capture: true });
+$("reader-toc-bar")?.addEventListener("pointerdown", () => {
   pinReaderPlace();
 }, { capture: true });
 $("reader-mode-btn").addEventListener("click", () => {
@@ -2386,10 +2528,11 @@ document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 syncFullscreenButton();
 
 window.addEventListener("keydown", (e) => {
-  if (notePopOpen()) {
+  if (notePopOpen() || tocPopOpen()) {
     if (e.key === "Escape") {
       e.preventDefault();
       hideNotePop();
+      hideTocPop();
     }
     return;
   }
