@@ -1249,7 +1249,12 @@ function mountReaderView(index, opts = {}) {
     html += `<div class="reader-chunk" data-idx="${i + k}">${readerChunks[i + k]}</div>`;
   }
   el.innerHTML = html + readerNotesHTML;
+  clearPageTransform(el);
+  clearPageLayoutStyles(el);
+  readerPageOffsets = [0];
+  readerPageIndex = 0;
   lastKnownContentH = 0;
+  void el.offsetHeight;
   return true;
 }
 
@@ -1694,10 +1699,12 @@ function clearPageTransform(el) {
 function pageWindowMetrics() {
   const el = readerContentEl();
   if (!el) return null;
-  const off = readerPageOffsets[readerPageIndex] || 0;
   const total = el.scrollHeight;
+  let off = readerPageOffsets[readerPageIndex] || 0;
+  if (off > Math.max(0, total - 1)) off = 0;
   const next = readerPageOffsets[readerPageIndex + 1];
-  const bottom = next != null ? next : total;
+  let bottom = next != null ? next : total;
+  if (bottom <= off) bottom = total;
   return {
     el,
     off,
@@ -1868,11 +1875,11 @@ function applyReadMode() {
   }
   localStorage.setItem("libshelf_read_mode", readMode);
   const el = readerContentEl();
-  if (el && !paging) {
-    clearPageTransform(el);
-    clearPageLayoutStyles(el);
-  } else if (el) {
-    clearPageLayoutStyles(el);
+  clearPageTransform(el);
+  clearPageLayoutStyles(el);
+  if (paging) {
+    readerPageOffsets = [0];
+    readerPageIndex = 0;
   }
 }
 
@@ -1964,9 +1971,15 @@ function readerPosition() {
   return raw;
 }
 
+let restoreReaderGen = 0;
+
 function restoreReaderPositionSoon(pos) {
+  const gen = ++restoreReaderGen;
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => restoreReaderPosition(pos));
+    requestAnimationFrame(() => {
+      if (gen !== restoreReaderGen) return;
+      restoreReaderPosition(pos);
+    });
   });
 }
 
@@ -1975,6 +1988,11 @@ function restoreReaderPosition(pos, opts = {}) {
   const p = clampReaderPos(pos);
   lastGoodReaderPos = p;
   const relayout = opts.relayout !== false;
+  const el = readerContentEl();
+  if (relayout && el) {
+    clearPageTransform(el);
+    clearPageLayoutStyles(el);
+  }
   mountReaderView(chunkIndexFromPosition(p));
   const before = readerChunkStart[readerChunkIndex] || 0;
   const local = readerChunks.length <= 1
@@ -1982,14 +2000,17 @@ function restoreReaderPosition(pos, opts = {}) {
     : clampReaderPos((p * readerTotalWeight - before) / mountedChunkWeight());
 
   if (pageModeActive()) {
-    const el = readerContentEl();
-    const total = el ? el.scrollHeight : 0;
+    const viewEl = readerContentEl();
+    const total = viewEl ? viewEl.scrollHeight : 0;
     const viewH = pageViewportHeight();
     if (pageLayoutCollapsed(total, viewH)) {
       if (restorePlaceTries++ < 12) {
         requestAnimationFrame(() => restoreReaderPosition(p, opts));
       } else {
         restorePlaceTries = 0;
+        readerPageOffsets = [0];
+        readerPageIndex = 0;
+        applyPageTransform(false);
       }
       return;
     }
@@ -2035,7 +2056,9 @@ function setReadMode(mode) {
   const pos = readerBookId ? readerPosition() : restorePosition;
   readMode = next;
   applyReadMode();
+  fitReaderFrame();
   if (readerBookId) {
+    mountReaderView(chunkIndexFromPosition(pos), { force: true });
     restoreReaderPositionSoon(pos);
     scheduleSaveProgress();
   }
