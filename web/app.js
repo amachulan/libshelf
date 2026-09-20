@@ -1314,6 +1314,14 @@ function advanceReaderChunk(dir) {
   return true;
 }
 
+function clearReaderStageSize() {
+  const stage = readerEl?.querySelector(".reader-stage");
+  if (!stage) return;
+  stage.style.height = "";
+  stage.style.minHeight = "";
+  stage.style.flex = "";
+}
+
 /** Fill the visible browser area. Android Chrome often reports 100dvh shorter than the screen. */
 function fitReaderFrame() {
   const el = readerEl;
@@ -1323,6 +1331,7 @@ function fitReaderFrame() {
     el.style.left = "";
     el.style.width = "";
     el.style.height = "";
+    clearReaderStageSize();
     return;
   }
   const vv = window.visualViewport;
@@ -1335,6 +1344,23 @@ function fitReaderFrame() {
   el.style.left = left + "px";
   el.style.width = w + "px";
   el.style.height = h + "px";
+
+  // Page-mode viewport is position:absolute. After a mode switch iOS/Android
+  // often leave .reader-stage at 0px (no in-flow child) — explicit height.
+  const stage = el.querySelector(".reader-stage");
+  if (!stage || !pageModeActive()) {
+    clearReaderStageSize();
+    return;
+  }
+  const chromeOn = !document.body.classList.contains("reader-chrome-hidden");
+  const bar = el.querySelector(".reader-bar");
+  const toc = $("reader-toc-bar");
+  const barH = chromeOn && bar ? bar.offsetHeight : 0;
+  const tocH = chromeOn && toc && !toc.classList.contains("hidden") ? toc.offsetHeight : 0;
+  const stageH = Math.max(80, h - barH - tocH);
+  stage.style.flex = `0 0 ${stageH}px`;
+  stage.style.height = stageH + "px";
+  stage.style.minHeight = stageH + "px";
 }
 
 function notePopEl() {
@@ -1705,12 +1731,18 @@ function pageWindowMetrics() {
   const next = readerPageOffsets[readerPageIndex + 1];
   let bottom = next != null ? next : total;
   if (bottom <= off) bottom = total;
+  const clipTop = Math.max(0, off);
+  const clipBottom = Math.max(0, total - bottom);
+  // inset(0 0 0 0) hides the node on some mobile WebKits after a remount.
+  const clip = clipTop < 1 && clipBottom < 1
+    ? "none"
+    : `inset(${clipTop}px 0 ${clipBottom}px 0)`;
   return {
     el,
     off,
     total,
     bottom,
-    clip: `inset(${Math.max(0, off)}px 0 ${Math.max(0, total - bottom)}px 0)`,
+    clip,
   };
 }
 
@@ -1977,8 +2009,11 @@ function restoreReaderPositionSoon(pos) {
   const gen = ++restoreReaderGen;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      if (gen !== restoreReaderGen) return;
-      restoreReaderPosition(pos);
+      requestAnimationFrame(() => {
+        if (gen !== restoreReaderGen) return;
+        fitReaderFrame();
+        restoreReaderPosition(pos);
+      });
     });
   });
 }
@@ -2004,7 +2039,8 @@ function restoreReaderPosition(pos, opts = {}) {
     const total = viewEl ? viewEl.scrollHeight : 0;
     const viewH = pageViewportHeight();
     if (pageLayoutCollapsed(total, viewH)) {
-      if (restorePlaceTries++ < 12) {
+      if (restorePlaceTries++ < 20) {
+        fitReaderFrame();
         requestAnimationFrame(() => restoreReaderPosition(p, opts));
       } else {
         restorePlaceTries = 0;
@@ -2027,6 +2063,14 @@ function restoreReaderPosition(pos, opts = {}) {
     readerPageIndex = best;
     applyPageTransform(false);
     scheduleTocUpdate();
+    if (readerPageOffsets.length <= 1) {
+      setTimeout(() => {
+        if (!readerBookId || !pageModeActive()) return;
+        const later = readerContentEl();
+        const laterH = later ? later.scrollHeight : 0;
+        if (laterH > pageViewportHeight() + 8) restoreReaderPosition(p);
+      }, 160);
+    }
     return;
   }
 
@@ -2053,12 +2097,18 @@ function flipReaderPage(dir, fromSlide = 0) {
 function setReadMode(mode) {
   const allowed = { "pages-h": 1, "pages-v": 1, scroll: 1 };
   const next = allowed[mode] ? mode : "scroll";
+  const prev = readMode;
   const pos = readerBookId ? readerPosition() : restorePosition;
   readMode = next;
   applyReadMode();
+  if (readerEl) void readerEl.offsetHeight;
   fitReaderFrame();
   if (readerBookId) {
-    mountReaderView(chunkIndexFromPosition(pos), { force: true });
+    const wasPaging = prev === "pages-h" || prev === "pages-v";
+    const nowPaging = next === "pages-h" || next === "pages-v";
+    if (wasPaging !== nowPaging) {
+      mountReaderView(chunkIndexFromPosition(pos), { force: true });
+    }
     restoreReaderPositionSoon(pos);
     scheduleSaveProgress();
   }
