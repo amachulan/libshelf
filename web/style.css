@@ -1381,6 +1381,8 @@ body.reader-pages .reader-bar {
 
 body.reader-pages .reader-stage {
   position: relative;
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -1388,12 +1390,13 @@ body.reader-pages .reader-stage {
   touch-action: none;
 }
 
-/* Absolute fill so clientHeight is real (%, flex % was sometimes ~0). */
+/* In-flow flex child — absolute inset:0 collapses after a mode switch on phones. */
 body.reader-pages .reader-viewport {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  width: 100%;
   overflow: hidden;
   display: flex;
   justify-content: center;
@@ -1453,7 +1456,6 @@ body.reader-pages .reader-content {
   overflow: visible;
   overscroll-behavior: none;
   touch-action: none;
-  will-change: transform;
   column-width: auto !important;
   column-count: auto !important;
 }
