@@ -1097,6 +1097,10 @@ body.reader-align-justify .reader-content .fb2-img {
 
 .reader-content p { margin: 0 0 0.9rem; }
 
+.reader-content .reader-chunk {
+  display: block;
+}
+
 .reader-toc-bar {
   display: flex;
   align-items: center;

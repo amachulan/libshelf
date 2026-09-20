@@ -99,6 +99,21 @@ let restorePlaceTries = 0;
 /** @type {Array<{id: string, title: string}>} */
 let readerChapters = [];
 let tocTick = 0;
+/** HTML fragments actually mounted in the reader. Full-book DOM is too slow to relayout. */
+const READER_CHUNK_CHARS = 64 * 1024;
+/** @type {string[]} */
+let readerChunks = [];
+/** @type {number[]} */
+let readerChunkWeights = [];
+/** @type {number[]} */
+let readerChunkStart = [];
+let readerTotalWeight = 1;
+let readerChunkIndex = 0;
+let readerMountCount = 0;
+let readerNotesHTML = "";
+/** @type {Map<string, number>} */
+let readerChapterChunk = new Map();
+let readerChunkShiftLock = false;
 
 function pageModeActive() {
   return (
@@ -1104,6 +1119,196 @@ function readerViewportEl() {
   return document.querySelector(".reader-viewport");
 }
 
+function resetReaderChunks() {
+  readerChunks = [];
+  readerChunkWeights = [];
+  readerChunkStart = [];
+  readerTotalWeight = 1;
+  readerChunkIndex = 0;
+  readerMountCount = 0;
+  readerNotesHTML = "";
+  readerChapterChunk = new Map();
+  readerChunkShiftLock = false;
+  const el = readerContentEl();
+  if (el) el.innerHTML = "";
+}
+
+function splitReaderHtml(html) {
+  const src = String(html || "");
+  let main = src;
+  let notes = "";
+  const notesIdx = src.search(/<aside\s+class="fb2-notes"/i);
+  if (notesIdx >= 0) {
+    main = src.slice(0, notesIdx);
+    notes = src.slice(notesIdx);
+  }
+
+  const starts = [];
+  const headingRe = /<h2\s+class="chapter"/gi;
+  let m;
+  while ((m = headingRe.exec(main))) starts.push(m.index);
+  if (!starts.length || starts[0] > 0) starts.unshift(0);
+
+  const parts = [];
+  for (let i = 0; i < starts.length; i++) {
+    const end = i + 1 < starts.length ? starts[i + 1] : main.length;
+    const part = main.slice(starts[i], end);
+    if (part.trim()) parts.push(part);
+  }
+
+  const chunks = [];
+  const pushChunks = (part) => {
+    if (part.length <= READER_CHUNK_CHARS) {
+      chunks.push(part);
+      return;
+    }
+    const pieces = part.split(/(?<=<\/p>)/i);
+    let buf = "";
+    for (const piece of pieces) {
+      if (buf && buf.length + piece.length > READER_CHUNK_CHARS) {
+        chunks.push(buf);
+        buf = piece;
+      } else {
+        buf += piece;
+      }
+    }
+    if (buf) chunks.push(buf);
+  };
+  if (!parts.length) {
+    if (main.trim()) pushChunks(main);
+  } else {
+    parts.forEach(pushChunks);
+  }
+  return { chunks: chunks.length ? chunks : [""], notes };
+}
+
+function prepareReaderHtml(html) {
+  const { chunks, notes } = splitReaderHtml(html);
+  readerChunks = chunks;
+  readerNotesHTML = notes;
+  readerChunkWeights = readerChunks.map((c) => Math.max(1, c.length));
+  readerChunkStart = [];
+  let acc = 0;
+  for (const w of readerChunkWeights) {
+    readerChunkStart.push(acc);
+    acc += w;
+  }
+  readerTotalWeight = acc || 1;
+  readerChunkIndex = 0;
+  readerMountCount = 0;
+  readerChapterChunk = new Map();
+  const idRe = /<h2\s+class="chapter"[^>]*\sid="([^"]+)"/gi;
+  readerChunks.forEach((chunk, i) => {
+    idRe.lastIndex = 0;
+    let m;
+    while ((m = idRe.exec(chunk))) readerChapterChunk.set(m[1], i);
+  });
+}
+
+function chunkIndexFromPosition(pos) {
+  if (!readerChunks.length) return 0;
+  const target = clampReaderPos(pos) * readerTotalWeight;
+  for (let i = 0; i < readerChunks.length; i++) {
+    if (target <= readerChunkStart[i] + readerChunkWeights[i]) return i;
+  }
+  return readerChunks.length - 1;
+}
+
+function chunkIndexForChapter(id) {
+  if (readerChapterChunk.has(id)) return readerChapterChunk.get(id);
+  return 0;
+}
+
+function mountedChunkWeight() {
+  let w = 0;
+  for (let k = 0; k < readerMountCount; k++) {
+    w += readerChunkWeights[readerChunkIndex + k] || 0;
+  }
+  return w || 1;
+}
+
+function mountReaderView(index, opts = {}) {
+  const el = readerContentEl();
+  if (!el || !readerChunks.length) return false;
+  const i = Math.max(0, Math.min(readerChunks.length - 1, index | 0));
+  const count = pageModeActive()
+    ? 1
+    : Math.min(2, readerChunks.length - i);
+  if (
+    !opts.force &&
+    i === readerChunkIndex &&
+    count === readerMountCount &&
+    el.querySelector(":scope > .reader-chunk")
+  ) {
+    return false;
+  }
+  readerChunkIndex = i;
+  readerMountCount = Math.max(1, count);
+  let html = "";
+  for (let k = 0; k < readerMountCount; k++) {
+    html += `<div class="reader-chunk" data-idx="${i + k}">${readerChunks[i + k]}</div>`;
+  }
+  el.innerHTML = html + readerNotesHTML;
+  lastKnownContentH = 0;
+  return true;
+}
+
+function maybeShiftScrollChunks() {
+  if (pageModeActive() || readerChunkShiftLock || readerChunks.length < 2) return;
+  const vp = scrollViewportEl();
+  const content = readerContentEl();
+  if (!vp || !content) return;
+  const first = content.querySelector(":scope > .reader-chunk");
+  if (!first) return;
+  const firstH = first.offsetHeight;
+  if (firstH < 16) return;
+
+  if (vp.scrollTop > firstH + 80 && readerChunkIndex + readerMountCount < readerChunks.length) {
+    readerChunkShiftLock = true;
+    const keep = vp.scrollTop - firstH;
+    mountReaderView(readerChunkIndex + 1, { force: true });
+    vp.scrollTop = Math.max(0, keep);
+    readerChunkShiftLock = false;
+    return;
+  }
+
+  if (vp.scrollTop < 8 && readerChunkIndex > 0) {
+    readerChunkShiftLock = true;
+    const oldTop = vp.scrollTop;
+    mountReaderView(readerChunkIndex - 1, { force: true });
+    const newFirst = content.querySelector(":scope > .reader-chunk");
+    const add = newFirst ? newFirst.offsetHeight : 0;
+    vp.scrollTop = add + oldTop;
+    readerChunkShiftLock = false;
+  }
+}
+
+function chunkStartPosition(index, local = 0) {
+  if (!readerChunks.length) return clampReaderPos(local);
+  const i = Math.max(0, Math.min(readerChunks.length - 1, index | 0));
+  const before = readerChunkStart[i] || 0;
+  const w = readerChunkWeights[i] || 1;
+  return clampReaderPos((before + clampReaderPos(local) * w) / readerTotalWeight);
+}
+
+function advanceReaderChunk(dir) {
+  const next = readerChunkIndex + dir;
+  if (next < 0 || next >= readerChunks.length) return false;
+  mountReaderView(next, { force: true });
+  if (pageModeActive()) {
+    rebuildReaderPages();
+    readerPageIndex = dir > 0 ? 0 : maxReaderPageIndex();
+    applyPageTransform(false);
+  } else {
+    const vp = scrollViewportEl();
+    if (vp) vp.scrollTop = dir > 0 ? 0 : Math.max(0, vp.scrollHeight - vp.clientHeight);
+  }
+  lastGoodReaderPos = chunkStartPosition(readerChunkIndex, dir > 0 ? 0 : 1);
+  scheduleSaveProgress();
+  scheduleTocUpdate();
+  return true;
+}
+
 /** Fill the visible browser area. Android Chrome often reports 100dvh shorter than the screen. */
 function fitReaderFrame() {
   const el = readerEl;
@@ -1214,8 +1419,14 @@ function chapterOffsetY(id) {
 
 function currentChapterIndex() {
   if (!readerChapters.length) return -1;
+  let best = 0;
+  for (let i = 0; i < readerChapters.length; i++) {
+    const cidx = chunkIndexForChapter(readerChapters[i].id);
+    if (cidx <= readerChunkIndex) best = i;
+    else break;
+  }
   const content = readerContentEl();
-  if (!content) return 0;
+  if (!content) return best;
   let y = 0;
   if (pageModeActive()) {
     y = (readerPageOffsets[readerPageIndex] || 0) + 12;
@@ -1223,7 +1434,6 @@ function currentChapterIndex() {
     const vp = scrollViewportEl();
     y = vp ? vp.scrollTop + 12 : 0;
   }
-  let best = 0;
   for (let i = 0; i < readerChapters.length; i++) {
     const top = chapterOffsetY(readerChapters[i].id);
     if (top == null) continue;
@@ -1272,22 +1482,25 @@ function showTocPop() {
 
 function jumpToChapter(id) {
   hideTocPop();
+  mountReaderView(chunkIndexForChapter(id));
   if (pageModeActive()) {
     rebuildReaderPages();
     const y = chapterOffsetY(id);
-    if (y == null) return;
-    let best = 0;
-    for (let i = 0; i < readerPageOffsets.length; i++) {
-      if (readerPageOffsets[i] <= y + 1) best = i;
-      else break;
+    if (y == null) {
+      readerPageIndex = 0;
+    } else {
+      let best = 0;
+      for (let i = 0; i < readerPageOffsets.length; i++) {
+        if (readerPageOffsets[i] <= y + 1) best = i;
+        else break;
+      }
+      readerPageIndex = best;
     }
-    readerPageIndex = best;
     applyPageTransform(false);
   } else {
     const y = chapterOffsetY(id);
-    if (y == null) return;
     const vp = scrollViewportEl();
-    if (vp) vp.scrollTop = Math.max(0, y - 6);
+    if (vp) vp.scrollTop = y == null ? 0 : Math.max(0, y - 6);
   }
   lastGoodReaderPos = readerPosition();
   scheduleSaveProgress();
@@ -1364,34 +1577,37 @@ function clearPageLayoutStyles(el) {
 /** Bottoms of line/box fragments, relative to the content element top. */
 function collectLineBottoms(root) {
   const rootRect = root.getBoundingClientRect();
+  const pageH = pageViewportHeight();
   const bottoms = [];
   const add = (y) => {
     if (y > 0.5) bottoms.push(y);
   };
+  const range = document.createRange();
 
   root.querySelectorAll("p, h1, h2, h3, h4, li, blockquote, .chapter, .fb2-img, img, pre, hr").forEach((el) => {
     const r = el.getBoundingClientRect();
     if (r.height < 1) return;
     add(r.bottom - rootRect.top);
-  });
-
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let node;
-  while ((node = walker.nextNode())) {
-    if (!/\S/.test(node.nodeValue || "")) continue;
-    const range = document.createRange();
-    try {
-      range.selectNodeContents(node);
-      const rects = range.getClientRects();
-      for (let i = 0; i < rects.length; i++) {
-        const r = rects[i];
-        if (r.height < 1 || r.width < 1) continue;
-        add(r.bottom - rootRect.top);
+    // Line-split only blocks that can straddle a page. Walking every
+    // text node in a long book freezes the UI for seconds.
+    if (r.height <= pageH * 0.85) return;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (!/\S/.test(node.nodeValue || "")) continue;
+      try {
+        range.selectNodeContents(node);
+        const rects = range.getClientRects();
+        for (let i = 0; i < rects.length; i++) {
+          const cr = rects[i];
+          if (cr.height < 1 || cr.width < 1) continue;
+          add(cr.bottom - rootRect.top);
+        }
+      } catch {
+        /* ignore detached nodes */
       }
-    } catch {
-      /* ignore detached nodes */
     }
-  }
+  });
 
   bottoms.sort((a, b) => a - b);
   const out = [];
@@ -1523,6 +1739,7 @@ function animatePageFlip(dir, fromSlide = 0) {
   if (readerPageOffsets.length <= 1) rebuildReaderPages();
   const nextIdx = readerPageIndex + dir;
   if (nextIdx < 0 || nextIdx > maxReaderPageIndex()) {
+    if (advanceReaderChunk(dir)) return true;
     animatePageSlideBack(fromSlide);
     return false;
   }
@@ -1705,7 +1922,7 @@ function pageLayoutCollapsed(total, viewH) {
   return false;
 }
 
-function readReaderPosition() {
+function mountedReaderFraction() {
   if (pageModeActive()) {
     const el = readerContentEl();
     const total = el ? el.scrollHeight : 0;
@@ -1726,6 +1943,15 @@ function readReaderPosition() {
   const max = total - viewH;
   if (max <= 0) return 0;
   return clampReaderPos(vp.scrollTop / max);
+}
+
+function readReaderPosition() {
+  if (!readerChunks.length || !readerMountCount) return null;
+  const local = mountedReaderFraction();
+  if (local == null) return null;
+  if (readerChunks.length <= 1) return local;
+  const before = readerChunkStart[readerChunkIndex] || 0;
+  return clampReaderPos((before + local * mountedChunkWeight()) / readerTotalWeight);
 }
 
 function readerPosition() {
@@ -1749,6 +1975,11 @@ function restoreReaderPosition(pos, opts = {}) {
   const p = clampReaderPos(pos);
   lastGoodReaderPos = p;
   const relayout = opts.relayout !== false;
+  mountReaderView(chunkIndexFromPosition(p));
+  const before = readerChunkStart[readerChunkIndex] || 0;
+  const local = readerChunks.length <= 1
+    ? p
+    : clampReaderPos((p * readerTotalWeight - before) / mountedChunkWeight());
 
   if (pageModeActive()) {
     const el = readerContentEl();
@@ -1766,7 +1997,7 @@ function restoreReaderPosition(pos, opts = {}) {
     if (relayout) rebuildReaderPages();
     const laidOut = el ? el.scrollHeight : 0;
     const maxScroll = Math.max(0, laidOut - pageViewportHeight());
-    const targetY = p * maxScroll;
+    const targetY = local * maxScroll;
     let best = 0;
     for (let i = 0; i < readerPageOffsets.length; i++) {
       if (readerPageOffsets[i] <= targetY + 1) best = i;
@@ -1789,7 +2020,7 @@ function restoreReaderPosition(pos, opts = {}) {
   }
   restorePlaceTries = 0;
   const max = vp.scrollHeight - vp.clientHeight;
-  vp.scrollTop = max > 0 ? p * max : 0;
+  vp.scrollTop = max > 0 ? local * max : 0;
   scheduleTocUpdate();
 }
 
@@ -1835,6 +2066,10 @@ async function openReader(id) {
   currentBookId = id;
   hideNotePop();
   hideTocPop();
+  if (readerBookId && readerBookId !== id) saveReaderProgress();
+  readerChapters = [];
+  resetReaderChunks();
+  updateTocBar();
   show("reader");
   applyReadMode();
   history.pushState({ read: id }, "", "/?read=" + id);
@@ -1857,8 +2092,9 @@ async function openReader(id) {
   lastKnownContentH = 0;
   pinnedReaderPos = null;
   $("reader-title").textContent = data.title || "";
-  $("reader-content").innerHTML = data.html || "";
+  prepareReaderHtml(data.html || "");
   readerChapters = Array.isArray(data.chapters) ? data.chapters : [];
+  mountReaderView(chunkIndexFromPosition(restorePosition), { force: true });
   hideTocPop();
   renderTocList();
   updateTocBar();
@@ -1952,6 +2188,7 @@ function closeReader() {
   hideNotePop();
   hideTocPop();
   readerChapters = [];
+  resetReaderChunks();
   updateTocBar();
   document.body.classList.remove(
     "reader-pages",
@@ -2349,6 +2586,7 @@ window.addEventListener("scroll", () => {
 
 readerViewportEl()?.addEventListener("scroll", () => {
   if (!readerBookId || pageModeActive()) return;
+  maybeShiftScrollChunks();
   scheduleSaveProgress();
   scheduleTocUpdate();
 }, { passive: true });
