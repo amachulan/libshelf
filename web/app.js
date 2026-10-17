@@ -1119,6 +1119,10 @@ function readerViewportEl() {
   return document.querySelector(".reader-viewport");
 }
 
+function readerPageWindowEl() {
+  return $("reader-page-window");
+}
+
 function resetReaderChunks() {
   readerChunks = [];
   readerChunkWeights = [];
@@ -1525,29 +1529,20 @@ function onReaderLinkClick(e) {
   showNotePop(note);
 }
 
-/** Visible size of the page viewport (layout can be taller than the screen with browser chrome). */
+/**
+ * Painted size of the page viewport.
+ * fitReaderFrame already matches the reader to the visual viewport.
+ * Shrinking again by visualViewport.offsetTop (browser chrome) makes the
+ * page a couple of lines shorter than the clip: the bottom line is sliced
+ * and the next page repeats it.
+ */
 function pageViewportBox() {
   const vp = readerViewportEl();
   let h = vp ? vp.clientHeight : 0;
   let w = vp ? vp.clientWidth : 0;
 
-  const vv = window.visualViewport;
-  if (vv && vp) {
-    const rect = vp.getBoundingClientRect();
-    const visTop = Math.max(rect.top, vv.offsetTop);
-    const visBottom = Math.min(rect.bottom, vv.offsetTop + vv.height);
-    const visLeft = Math.max(rect.left, vv.offsetLeft);
-    const visRight = Math.min(rect.right, vv.offsetLeft + vv.width);
-    const visibleH = visBottom - visTop;
-    const visibleW = visRight - visLeft;
-    if (visibleH >= 80) h = h > 0 ? Math.min(h, visibleH) : visibleH;
-    if (visibleW >= 80) w = w > 0 ? Math.min(w, visibleW) : visibleW;
-  } else if (vv) {
-    if (vv.height >= 80) h = h > 0 ? Math.min(h, vv.height) : vv.height;
-    if (vv.width >= 80) w = w > 0 ? Math.min(w, vv.width) : vv.width;
-  }
-
   if (h < 80 || w < 80) {
+    const vv = window.visualViewport;
     const chromeOn = !document.body.classList.contains("reader-chrome-hidden");
     const bar = document.querySelector(".reader-bar");
     const toc = $("reader-toc-bar");
@@ -1558,7 +1553,7 @@ function pageViewportBox() {
     if (h < 80) h = fallbackH;
     if (w < 80) w = fallbackW;
   }
-  return { h: Math.max(80, h - 2), w: Math.max(80, w) };
+  return { h: Math.max(80, Math.floor(h)), w: Math.max(80, Math.floor(w)) };
 }
 
 function pageViewportHeight() {
@@ -1577,54 +1572,56 @@ function clearPageLayoutStyles(el) {
   el.style.opacity = "";
 }
 
-/** Bottoms of line/box fragments, relative to the content element top. */
-function collectLineBottoms(root) {
-  const rootRect = root.getBoundingClientRect();
-  const pageH = pageViewportHeight();
-  const bottoms = [];
-  const add = (y) => {
-    if (y > 0.5) bottoms.push(y);
-  };
+const PAGE_BLOCK_SEL = "p, h1, h2, h3, h4, li, blockquote, pre, .fb2-img, img, hr";
+
+/** Line-box bottoms relative to the content top. One range per straddling block. */
+function lineBoxBottoms(el, rootTop) {
   const range = document.createRange();
-
-  root.querySelectorAll("p, h1, h2, h3, h4, li, blockquote, .chapter, .fb2-img, img, pre, hr").forEach((el) => {
-    const r = el.getBoundingClientRect();
-    if (r.height < 1) return;
-    add(r.bottom - rootRect.top);
-    // Line-split only blocks that can straddle a page. Walking every
-    // text node in a long book freezes the UI for seconds.
-    if (r.height <= pageH * 0.85) return;
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    let node;
-    while ((node = walker.nextNode())) {
-      if (!/\S/.test(node.nodeValue || "")) continue;
-      try {
-        range.selectNodeContents(node);
-        const rects = range.getClientRects();
-        for (let i = 0; i < rects.length; i++) {
-          const cr = rects[i];
-          if (cr.height < 1 || cr.width < 1) continue;
-          add(cr.bottom - rootRect.top);
-        }
-      } catch {
-        /* ignore detached nodes */
-      }
-    }
-  });
-
-  bottoms.sort((a, b) => a - b);
-  const out = [];
-  for (const y of bottoms) {
-    if (!out.length || y - out[out.length - 1] > 0.75) out.push(y);
+  let rects;
+  try {
+    range.selectNodeContents(el);
+    rects = range.getClientRects();
+  } catch {
+    return [];
   }
-  return out;
+  const bottoms = [];
+  for (let i = 0; i < rects.length; i++) {
+    const cr = rects[i];
+    if (cr.height < 1 || cr.width < 1) continue;
+    bottoms.push(cr.bottom - rootTop);
+  }
+  bottoms.sort((a, b) => a - b);
+  return bottoms;
 }
 
-/**
-  Build page offsets (line-snapped translateY windows).
-  Both "вбок" and "вниз" use this — CSS multicol on a whole book is too slow on phones.
-  "Вбок" only changes the swipe axis / flip animation.
- */
+function isReplacedPageBlock(el) {
+  const tag = el.tagName;
+  return tag === "IMG" || tag === "HR";
+}
+
+/** Drop the line clip so off-screen line boxes keep their real coordinates. */
+function withUnclippedPageMeasure(fn) {
+  const vp = readerViewportEl();
+  const win = readerPageWindowEl();
+  const prevVp = vp ? vp.style.overflow : "";
+  const prevH = win ? win.style.height : "";
+  const prevO = win ? win.style.overflow : "";
+  if (vp) vp.style.overflow = "visible";
+  if (win) {
+    win.style.height = "auto";
+    win.style.overflow = "visible";
+  }
+  try {
+    return fn();
+  } finally {
+    if (vp) vp.style.overflow = prevVp;
+    if (win) {
+      win.style.height = prevH;
+      win.style.overflow = prevO;
+    }
+  }
+}
+
 function rebuildReaderPages() {
   const content = readerContentEl();
   if (!content) {
@@ -1638,41 +1635,64 @@ function rebuildReaderPages() {
   content.style.transform = "none";
   content.style.clipPath = "none";
 
-  const H = pageViewportHeight();
-  const total = content.scrollHeight;
-  if (H < 80 || total <= H + 1) {
-    readerPageOffsets = [0];
-    readerPageStride = H;
-    return;
-  }
+  const measured = withUnclippedPageMeasure(() => {
+    const H = pageViewportHeight();
+    const total = content.scrollHeight;
+    if (H < 80 || total <= H + 1) return { H, offsets: [0] };
 
-  const bottoms = collectLineBottoms(content);
-  const offsets = [0];
-  let pageTop = 0;
-  const eps = 1;
+    const rootTop = content.getBoundingClientRect().top;
+    const blocks = [];
+    content.querySelectorAll(PAGE_BLOCK_SEL).forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.height < 1) return;
+      blocks.push({ el, top: r.top - rootTop, bottom: r.bottom - rootTop });
+    });
+    blocks.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
 
-  while (pageTop + H < total - eps) {
-    const limit = pageTop + H - 4;
-    let best = -1;
-    for (let i = 0; i < bottoms.length; i++) {
-      const b = bottoms[i];
-      if (b <= pageTop + eps) continue;
-      if (b > limit) break;
-      best = b;
+    const offsets = [0];
+    let pageTop = 0;
+    const eps = 1;
+
+    while (pageTop + H < total - eps) {
+      const limit = pageTop + H - 0.5;
+      let best = -1;
+      for (let i = 0; i < blocks.length; i++) {
+        const b = blocks[i];
+        if (b.bottom <= pageTop + eps) continue;
+        if (b.top >= limit) break;
+        // Block top keeps the paragraph margin on this page, not the next one.
+        if (b.top > pageTop + eps) best = Math.max(best, b.top);
+        if (b.bottom <= limit) {
+          best = Math.max(best, b.bottom);
+          continue;
+        }
+        if (isReplacedPageBlock(b.el)) continue;
+        const lines = lineBoxBottoms(b.el, rootTop);
+        for (let j = 0; j < lines.length; j++) {
+          const y = lines[j];
+          if (y <= pageTop + eps) continue;
+          if (y > limit) break;
+          best = Math.max(best, y);
+        }
+      }
+
+      let nextTop = best > pageTop + eps ? best : pageTop + H;
+      if (nextTop > limit) nextTop = limit;
+      if (nextTop <= pageTop + eps) break;
+      if (nextTop >= total - 4) break;
+
+      offsets.push(nextTop);
+      pageTop = nextTop;
+      if (offsets.length > 20000) break;
     }
+    return { H, offsets };
+  });
 
-    let nextTop = best > pageTop + eps ? best : pageTop + H;
-    if (nextTop <= pageTop + 1) nextTop = pageTop + H;
-    if (nextTop >= total - 4) break;
-
-    offsets.push(nextTop);
-    pageTop = nextTop;
-    if (offsets.length > 20000) break;
+  readerPageOffsets = measured.offsets;
+  readerPageStride = measured.H;
+  if (readerPageIndex > measured.offsets.length - 1) {
+    readerPageIndex = measured.offsets.length - 1;
   }
-
-  readerPageOffsets = offsets;
-  readerPageStride = H;
-  if (readerPageIndex > offsets.length - 1) readerPageIndex = offsets.length - 1;
 }
 
 function maxReaderPageIndex() {
@@ -1692,6 +1712,21 @@ function clearPageTransform(el) {
   el.style.clipPath = "";
   el.style.transition = "";
   el.style.opacity = "";
+  setPageWindowHeight(null);
+}
+
+/** Clip the column to this page's lines. null restores the stylesheet height. */
+function setPageWindowHeight(px) {
+  const w = readerPageWindowEl();
+  if (!w) return;
+  w.style.overflow = "";
+  if (px == null || !pageModeActive()) {
+    w.style.height = "";
+    return;
+  }
+  const viewH = pageViewportHeight();
+  const h = Math.max(1, Math.min(viewH, Math.ceil(px)));
+  w.style.height = h + "px";
 }
 
 function pageWindowMetrics() {
@@ -1712,8 +1747,9 @@ function settlePageTransform() {
   if (!m) return;
   m.el.style.transition = "none";
   m.el.style.transform = `translate3d(0, ${-m.off}px, 0)`;
-  m.el.style.clipPath = "none";
+  m.el.style.clipPath = "";
   m.el.style.opacity = "1";
+  setPageWindowHeight(m.bottom - m.off);
 }
 
 function applyPageTransform(smooth, flipDir = 0) {
@@ -1747,11 +1783,14 @@ function animatePageFlip(dir, fromSlide = 0) {
   if (!m) return false;
   pageFlipBusy = true;
   const horizontal = pageFlipHorizontal();
-  const span = horizontal ? pageViewportBox().w : pageViewportBox().h;
-  const toSlide = dir > 0 ? -span : span;
+  const destOff = readerPageOffsets[nextIdx];
+  // Vertical travel is the line stride. A full-viewport slide overshoots that
+  // stride and then jumps back, so the next page repeats the last lines.
+  const toX = horizontal ? (dir > 0 ? -pageViewportBox().w : pageViewportBox().w) : 0;
+  const toY = horizontal ? -m.off : -destOff;
   const ms = Math.abs(fromSlide) > 8 ? PAGE_SLIDE_DRAG_MS : PAGE_SLIDE_TAP_MS;
 
-  m.el.style.clipPath = "none";
+  m.el.style.clipPath = "";
   m.el.style.opacity = "1";
   m.el.style.transition = "none";
   if (horizontal) {
@@ -1786,11 +1825,7 @@ function animatePageFlip(dir, fromSlide = 0) {
 
   requestAnimationFrame(() => {
     m.el.style.transition = `transform ${ms}ms ${PAGE_EASE}`;
-    if (horizontal) {
-      m.el.style.transform = `translate3d(${toSlide}px, ${-m.off}px, 0)`;
-    } else {
-      m.el.style.transform = `translate3d(0, ${-m.off + toSlide}px, 0)`;
-    }
+    m.el.style.transform = `translate3d(${toX}px, ${toY}px, 0)`;
   });
   return true;
 }
@@ -1800,7 +1835,7 @@ function animatePageSlideBack(fromSlide = 0) {
   const m = pageWindowMetrics();
   if (!m) return;
   const horizontal = pageFlipHorizontal();
-  m.el.style.clipPath = "none";
+  m.el.style.clipPath = "";
   m.el.style.transition = "none";
   if (horizontal) {
     m.el.style.transform = `translate3d(${fromSlide}px, ${-m.off}px, 0)`;
@@ -1817,7 +1852,7 @@ function applyPageDragSlide(slide) {
   if (!m || pageFlipBusy) return;
   const horizontal = pageFlipHorizontal();
   m.el.style.transition = "none";
-  m.el.style.clipPath = "none";
+  m.el.style.clipPath = "";
   if (horizontal) {
     m.el.style.transform = `translate3d(${slide}px, ${-m.off}px, 0)`;
   } else {

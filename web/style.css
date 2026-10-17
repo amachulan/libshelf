@@ -1390,7 +1390,7 @@ body.reader-pages .reader-stage {
   touch-action: none;
 }
 
-/* In-flow flex child — absolute inset:0 collapses after a mode switch on phones. */
+/* In-flow block — absolute inset:0 collapses after a mode switch on phones. */
 body.reader-pages .reader-viewport {
   position: relative;
   flex: 1 1 auto;
@@ -1398,10 +1398,20 @@ body.reader-pages .reader-viewport {
   min-height: 0;
   width: 100%;
   overflow: hidden;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
   touch-action: none;
+}
+
+/* Clips the column to whole lines. Shorter than the viewport by less than a line,
+   so the bottom glyph is not sliced and the next page does not repeat it. */
+.reader-page-window {
+  width: 100%;
+  min-width: 0;
+}
+
+body.reader-pages .reader-page-window {
+  overflow: hidden;
+  height: 100%;
+  min-height: 0;
 }
 
 body.reader-pages .reader-page-nav {
@@ -1451,7 +1461,7 @@ body.reader-pages .reader-content {
   height: auto;
   max-width: var(--reader-max);
   max-height: none;
-  margin: 0;
+  margin: 0 auto;
   padding: 1.15rem 1.25rem 1.5rem;
   overflow: visible;
   overscroll-behavior: none;
