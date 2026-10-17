@@ -1298,19 +1298,67 @@ function chunkStartPosition(index, local = 0) {
   return clampReaderPos((before + clampReaderPos(local) * w) / readerTotalWeight);
 }
 
+/** Tops of the mounted chapter chunks, relative to the content box. */
+function mountedChunkTops(content) {
+  if (!content) return [];
+  return withUnclippedPageMeasure(() => {
+    content.style.transform = "none";
+    const root = content.getBoundingClientRect().top;
+    return [...content.querySelectorAll(":scope > .reader-chunk")].map((el) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top - root, bottom: r.bottom - root };
+    });
+  });
+}
+
+/** Last page that starts at or before y, so its window still covers that line. */
+function pageIndexCovering(y) {
+  let best = 0;
+  for (let i = 0; i < readerPageOffsets.length; i++) {
+    if (readerPageOffsets[i] <= y + 1) best = i;
+    else break;
+  }
+  return best;
+}
+
+/** Last page that ends before y. */
+function pageIndexBefore(y) {
+  let best = 0;
+  for (let i = 0; i < readerPageOffsets.length; i++) {
+    const next = readerPageOffsets[i + 1];
+    const end = next == null ? Infinity : next;
+    if (end <= y + 1) best = i;
+    else break;
+  }
+  return best;
+}
+
 function advanceReaderChunk(dir) {
   const next = readerChunkIndex + dir;
   if (next < 0 || next >= readerChunks.length) return false;
+  // The mount already includes the following chunk. Page 0 of that chunk is
+  // the chapter the reader just finished — landing there hides the ending.
+  if (dir > 0 && readerChunkIndex + readerMountCount >= readerChunks.length) return false;
+
   mountReaderView(next, { force: true });
   if (pageModeActive()) {
     rebuildReaderPages();
-    readerPageIndex = dir > 0 ? 0 : maxReaderPageIndex();
+    const tops = mountedChunkTops(readerContentEl());
+    if (dir > 0) {
+      // Newly revealed chunk is the second one. Open the page that contains
+      // its first line, not the top of the chapter already on screen.
+      const added = tops[1];
+      readerPageIndex = added ? pageIndexCovering(added.top) : maxReaderPageIndex();
+    } else {
+      const boundary = tops[1];
+      readerPageIndex = boundary ? pageIndexBefore(boundary.top) : maxReaderPageIndex();
+    }
     applyPageTransform(false);
   } else {
     const vp = scrollViewportEl();
     if (vp) vp.scrollTop = dir > 0 ? 0 : Math.max(0, vp.scrollHeight - vp.clientHeight);
   }
-  lastGoodReaderPos = chunkStartPosition(readerChunkIndex, dir > 0 ? 0 : 1);
+  lastGoodReaderPos = readerPosition();
   scheduleSaveProgress();
   scheduleTocUpdate();
   return true;
