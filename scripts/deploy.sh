@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploy libshelf binary built from current master (GitHub pre-release "latest").
 # Waits for CI to publish that commit — avoids installing the previous build.
+# Installs a systemd unit so serve comes back after reboot.
 # Does NOT re-import inpx / touch the SQLite DB.
 #
 # Site-local settings: put exports in /opt/libshelf/deploy.env (not overwritten
@@ -18,11 +19,11 @@ fi
 
 REPO="${LIBSHELF_REPO:-amachulan/libshelf}"
 BIN="${LIBSHELF_BIN:-/opt/libshelf/libshelf}"
-DATA_DIR="${LIBSHELF_DATA:-/opt/libshelf/data}"
 LIB_DIR="${LIBSHELF_LIB:-/mnt/share/Книги/fb2.Flibusta.Net}"
 # Optional extra archive roots (colon-separated), e.g. /data/books-new
 LIB_DIR_EXTRA="${LIBSHELF_LIB_EXTRA:-}"
 ADDR="${LIBSHELF_ADDR:-127.0.0.1:12380}"
+# Pre-systemd installs ran inside this screen session. Quit it if it is still around.
 SCREEN_NAME="${LIBSHELF_SCREEN:-libshelf}"
 ASSET="libshelf-linux-amd64"
 # How long to wait for GitHub Actions to publish the master commit.
@@ -164,20 +165,50 @@ echo "Binary OK: $GOT_VER"
 install -d "$(dirname "$BIN")"
 install -m 755 "$OUT" "${BIN}.new"
 
+if ! command -v systemctl >/dev/null 2>&1; then
+  rm -f "${BIN}.new"
+  echo "systemctl is required so libshelf can start on boot" >&2
+  exit 1
+fi
+
+HELPER="$(dirname "$BIN")/serve.sh"
+UNIT="/etc/systemd/system/libshelf.service"
+
 echo "Stopping old process (if any) ..."
 if screen -list 2>/dev/null | grep -q "[.]${SCREEN_NAME}[[:space:]]"; then
   screen -S "$SCREEN_NAME" -X quit || true
   sleep 1
 fi
+if [[ -f "$UNIT" ]]; then
+  systemctl stop libshelf.service || true
+fi
+# Orphan from a manual start. Stop the unit first: pkill races with Restart=.
 pkill -f "${BIN} serve" 2>/dev/null || true
 sleep 1
 
 mv -f "${BIN}.new" "$BIN"
 
-echo "Starting $BIN on $ADDR ..."
+cat > "$HELPER" <<'EOF'
+#!/usr/bin/env bash
+# Started by systemd (libshelf.service). Site settings stay in deploy.env.
+set -euo pipefail
+
+ENV_FILE="${LIBSHELF_ENV:-/opt/libshelf/deploy.env}"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+BIN="${LIBSHELF_BIN:-/opt/libshelf/libshelf}"
+DATA_DIR="${LIBSHELF_DATA:-/opt/libshelf/data}"
+LIB_DIR="${LIBSHELF_LIB:-/mnt/share/Книги/fb2.Flibusta.Net}"
+LIB_DIR_EXTRA="${LIBSHELF_LIB_EXTRA:-}"
+ADDR="${LIBSHELF_ADDR:-127.0.0.1:12380}"
 AUTH_MODE="${LIBSHELF_AUTH:-users}"
 
-SERVE_ARGS=(
+args=(
   serve
   --addr "$ADDR"
   --data-dir "$DATA_DIR"
@@ -185,23 +216,56 @@ SERVE_ARGS=(
   --library-dir "$LIB_DIR"
 )
 if [[ -n "$LIB_DIR_EXTRA" ]]; then
-  IFS=':' read -r -a _extra_libs <<< "$LIB_DIR_EXTRA"
-  for d in "${_extra_libs[@]}"; do
+  IFS=':' read -r -a extra <<< "$LIB_DIR_EXTRA"
+  for d in "${extra[@]}"; do
     [[ -n "$d" ]] || continue
-    SERVE_ARGS+=(--library-dir "$d")
+    args+=(--library-dir "$d")
   done
 fi
 # Optional: LIBSHELF_LANGUAGES=ru,en or * for all (default: ru via serve)
 if [[ -n "${LIBSHELF_LANGUAGES:-}" ]]; then
-  IFS=',' read -r -a _langs <<< "$LIBSHELF_LANGUAGES"
-  for lang in "${_langs[@]}"; do
+  IFS=',' read -r -a langs <<< "$LIBSHELF_LANGUAGES"
+  for lang in "${langs[@]}"; do
     lang="$(echo "$lang" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
     [[ -n "$lang" ]] || continue
-    SERVE_ARGS+=(--lang "$lang")
+    args+=(--lang "$lang")
   done
 fi
+exec "$BIN" "${args[@]}"
+EOF
+chmod 755 "$HELPER"
 
-screen -dmaS "$SCREEN_NAME" "$BIN" "${SERVE_ARGS[@]}"
+{
+  echo '[Unit]'
+  echo 'Description=LibShelf'
+  echo 'After=network-online.target remote-fs.target'
+  echo 'Wants=network-online.target'
+  printf 'RequiresMountsFor=%s\n' "$LIB_DIR"
+  if [[ -n "$LIB_DIR_EXTRA" ]]; then
+    IFS=':' read -r -a _mount_libs <<< "$LIB_DIR_EXTRA"
+    for d in "${_mount_libs[@]}"; do
+      [[ -n "$d" ]] || continue
+      printf 'RequiresMountsFor=%s\n' "$d"
+    done
+  fi
+  echo
+  echo '[Service]'
+  echo 'Type=simple'
+  printf 'ExecStart=%s\n' "$HELPER"
+  echo 'Restart=on-failure'
+  echo 'RestartSec=3'
+  echo
+  echo '[Install]'
+  echo 'WantedBy=multi-user.target'
+} > "$UNIT"
+
+echo "Starting $BIN on $ADDR via systemd ..."
+systemctl daemon-reload
+systemctl enable libshelf.service
+if ! systemctl restart libshelf.service; then
+  journalctl -u libshelf.service -n 40 --no-pager >&2 || true
+  exit 1
+fi
 
 HEALTH=""
 for i in $(seq 1 30); do
@@ -214,8 +278,7 @@ for i in $(seq 1 30); do
 done
 
 echo "WARN: health check unexpected: ${HEALTH:-<failed>}" >&2
-echo "screen sessions:" >&2
-screen -ls >&2 || true
+journalctl -u libshelf.service -n 40 --no-pager >&2 || true
 echo "Try foreground:" >&2
-echo "  $BIN ${SERVE_ARGS[*]}" >&2
+echo "  $HELPER" >&2
 exit 1

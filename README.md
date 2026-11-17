@@ -300,7 +300,7 @@ server {
 
 - ждёт, пока в `latest` появится **текущий** commit `master` (не ставит предыдущую сборку);
 - скачивает бинарник и сверяет `libshelf version` с SHA;
-- подменяет файл и перезапускает процесс в `screen`.
+- подменяет файл, ставит systemd-юнит `libshelf.service` и перезапускает сервис. После ребута процесс поднимается сам.
 
 Импорт и базу скрипт не трогает, только бинарник и перезапуск `serve`.
 
@@ -320,7 +320,7 @@ sudo /opt/libshelf/deploy.sh
 
 Скрипт читает `/opt/libshelf/deploy.env` (или путь из `LIBSHELF_ENV`). Этот файл не затирается при повторном скачивании `deploy.sh`.
 
-Переменные: `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_LIB_EXTRA` (доп. каталоги через `:`), `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users` или `none`), `LIBSHELF_LANGUAGES`, `LIBSHELF_DEPLOY_WAIT`, `LIBSHELF_SCREEN`.
+Переменные: `LIBSHELF_REPO`, `LIBSHELF_BIN`, `LIBSHELF_DATA`, `LIBSHELF_LIB`, `LIBSHELF_LIB_EXTRA` (доп. каталоги через `:`), `LIBSHELF_ADDR`, `LIBSHELF_AUTH` (`users` или `none`), `LIBSHELF_LANGUAGES`, `LIBSHELF_DEPLOY_WAIT`.
 
 ## Рейтинги FantLab
 
